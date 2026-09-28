@@ -1,0 +1,19 @@
+﻿# dependencies and build output
+node_modules/
+dist/
+.next/
+out/
+*.tsbuildinfo
+
+# secrets - never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.vercel/

@@ -1,0 +1,52 @@
+[
+  {
+    "name": "Navigate through agency modules",
+    "sanity": true,
+    "viewport": "desktop",
+    "covers": ["sidebar navigation", "module selection"],
+    "description": "Verifies the dashboard can open major workspace modules.",
+    "steps": [
+      "Open the dashboard",
+      "Select SEO / GEO Audit",
+      "Return to Overview"
+    ],
+    "expected": "The selected module title changes and Overview restores the Agency Overview dashboard."
+  },
+  {
+    "name": "Approve an Admin queue item",
+    "viewport": "desktop",
+    "covers": ["approval queue", "Admin approval action"],
+    "description": "Verifies an Admin can approve a queued action.",
+    "steps": [
+      "Open Agency Overview",
+      "Click Approve on Meta campaign budget change",
+      "Observe the queue"
+    ],
+    "expected": "The item changes to Approved and a confirmation message appears."
+  },
+  {
+    "name": "Create a client workspace",
+    "viewport": "desktop",
+    "covers": ["client workspace creation", "Add client action"],
+    "description": "Verifies the Admin can create a client workspace.",
+    "steps": [
+      "Click Add client",
+      "Observe Client Workspaces",
+      "Observe the new row"
+    ],
+    "expected": "A New Client workspace appears with a success message."
+  },
+  {
+    "name": "Switch agency workspace",
+    "viewport": "mobile",
+    "covers": ["workspace selector", "multi-workspace Admin control"],
+    "description": "Verifies the workspace selector changes agency context.",
+    "steps": [
+      "Open the workspace selector",
+      "Choose VMS Demo Agency",
+      "Observe the header"
+    ],
+    "expected": "The selected workspace name changes in the header."
+  }
+]
+
