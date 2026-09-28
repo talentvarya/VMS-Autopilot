@@ -16,6 +16,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
+import SeoAuditModule from './SeoAuditModule';
 import { Approval, Stat, Timeline, Title } from './dashboard/parts';
 import { channelNames, chartBars, initialClients, nav, workspaceOptions, type ClientRow } from './dashboard/data';
 
@@ -284,7 +285,9 @@ export default function Dashboard() {
                 <ChevronDown size={15} aria-hidden="true" />
               </button>
             </div>
-            {active !== 'Overview' ? (
+            {active === 'SEO / GEO Audit' ? (
+              <SeoAuditModule notify={notify} />
+            ) : active !== 'Overview' ? (
               <div className="module">
                 <div className="module-icon" aria-hidden="true">
                   <Sparkles size={28} />

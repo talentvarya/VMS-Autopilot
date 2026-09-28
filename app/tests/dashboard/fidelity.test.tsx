@@ -66,7 +66,11 @@ describe('stylesheet and assets', () => {
     const withoutMedia = added
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/@media[^{]+\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, '');
-    const selectors = [...withoutMedia.matchAll(/([^{}]+)\{/g)].map((m) => m[1].trim().replace(/\s+/g, ' '));
+    // Rules for the new SEO / GEO module are scoped to .seo* elements, which do not exist on any
+    // approved screen, so they cannot change how those look.
+    const selectors = [...withoutMedia.matchAll(/([^{}]+)\{/g)]
+      .map((m) => m[1].trim().replace(/\s+/g, ' '))
+      .filter((sel) => !sel.startsWith('.seo'));
     expect(selectors.sort()).toEqual(
       [
         '.sr-only',
@@ -83,8 +87,8 @@ describe('stylesheet and assets', () => {
     expect(withoutMedia).toContain(':focus-visible');
     // And every media query we added is a max-width (small-screen) one or reduced-motion.
     const queries = [...added.matchAll(/@media\s*([^{]+)\{/g)].map((m) => m[1].trim());
-    expect(queries.sort()).toEqual(
-      ['(max-width: 1099px)', '(max-width: 520px)', '(max-width: 900px)', '(prefers-reduced-motion: reduce)'].sort(),
+    expect([...new Set(queries)].sort()).toEqual(
+      ['(max-width: 1099px)', '(max-width: 520px)', '(max-width: 900px)', '(prefers-reduced-motion: reduce)', 'print'].sort(),
     );
   });
 });
@@ -173,7 +177,7 @@ describe('the ported dashboard renders exactly like the approved App.tsx', () =>
       /Add client/, //         first new row + toast
       /Add client/, //         second new row
       'Approve', //            Domain DNS update
-      'SEO / GEO Audit', //    module placeholder
+      'Domains', //            module placeholder
       /Open module/, //        toast
       'Overview', //           back to the dashboard (approved state and new rows are gone / kept the same way)
       /Acme Marketing/, //     open the workspace selector

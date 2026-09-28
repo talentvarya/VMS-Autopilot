@@ -8,7 +8,8 @@ are ready, paste them into a **new, empty TEST project** — never a project wit
 1. `migrations/20260928000100_foundation_schema.sql` — tables and types
 2. `migrations/20260928000200_security_functions_and_rls.sql` — the locks: who sees what, audit log, approvals
 3. `migrations/20260928000300_permission_seed.sql` — the permission tables (generated; do not edit)
-4. Sign up once in the app with the email you want as Admin, then edit the email in
+4. `migrations/20260928000400_seo_audits.sql` — websites, audit runs and findings (Phase 2)
+5. Sign up once in the app with the email you want as Admin, then edit the email in
    `manual/bootstrap_first_admin.sql` and run it. That makes you the first Admin.
 
 Each file is complete on its own; run one, wait for "Success", then the next.
@@ -24,6 +25,8 @@ Even if the app has a bug, Postgres refuses:
 - Reading stored integration credentials — that table is closed to every logged-in user; only the server key can touch it, and it stores a *reference* to a secret, never the secret.
 - Removing the last Admin of an agency.
 - Signing up giving any access at all.
+- A Client changing an audit result, faking a "live" audit, or applying a fix — Clients can only queue a sample audit, and audits are rate-limited (5 per website and 20 per workspace per day).
+- Editing an audit finding after it is saved (only the "fix applied" record can change, and only an Admin can set it).
 
 ## Safe to delete?
 
