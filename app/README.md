@@ -4,6 +4,13 @@ The Next.js application. It shows the **approved dashboard exactly as designed**
 (`../interface/` is the untouched reference) and contains the **permission model**, the
 **database design** and the **tests** that later phases build on.
 
+**Phase 4** organized and validated the `../agency-agents/` persona catalog against a fixed
+9-agent future runtime architecture — no code in this `app/` folder changed. See
+[`../docs/AGENT-RUNTIME-ARCHITECTURE.md`](../docs/AGENT-RUNTIME-ARCHITECTURE.md) (the 9 agents),
+[`../docs/AGENT-CATALOG-MAPPING.md`](../docs/AGENT-CATALOG-MAPPING.md) (catalog-to-agent mapping)
+and [`../docs/AGENT-CATALOG-VALIDATION.md`](../docs/AGENT-CATALOG-VALIDATION.md) (the five
+read-only catalog validation checks and their results).
+
 ## What is and is not connected
 
 | | Status after Phase 3 |
