@@ -1,7 +1,8 @@
 /**
  * The AI Orchestrator - the only thing that ever invokes an agent or decides what an agent's
- * proposed action is allowed to do. See docs/AGENT-RUNTIME-ARCHITECTURE.md for the full design;
- * this file is the Sub-phase A skeleton, wired to exactly one agent (sandbox_echo).
+ * proposed action is allowed to do. See docs/AGENT-RUNTIME-ARCHITECTURE.md for the full design.
+ * Sub-phase A wired one agent (sandbox_echo, proposal-only); Sub-phase B adds a second
+ * (social_media_super_agent) whose allowed tool calls actually persist something real.
  *
  * For every proposed tool call, in this order:
  *   1. If the tool is not on the agent's own allowed_tools list, refuse it. This list - not
@@ -9,34 +10,28 @@
  *   2. If the tool maps to a permission, run decide() - the EXACT SAME function a human's own
  *      click already goes through - using the role/grants of the person this run is acting on
  *      behalf of. An agent can never be treated as more permitted than that person.
- *   3. Never apply the proposed action itself. Sub-phase A's only agent has no real action to
- *      apply anyway; a later agent's actual writes go through the same functions a human's own
- *      click already uses (createDraft(), transition(), ...), never a shortcut built for agents.
+ *   3. Only once a call is allowed (or needed no permission at all) does its own `apply()` run,
+ *      if it has one. Sub-phase A's tools never define one, so their behaviour is unchanged.
+ *      A tool WITH one still goes through the same functions a human's own click already uses
+ *      (see social/agent.ts) - never a shortcut built for agents.
  */
 
-import { decide, type Grant, type Role } from '@/lib/permissions';
+import { decide } from '@/lib/permissions';
 import { runEchoAgent, type EchoAgentInput } from './echo-agent';
+import { runSocialMediaSuperAgent, type SocialAgentInput } from './social/agent';
 import { toolDefinition } from './tools';
 import type {
-  AgentDefinition,
   AgentLogicResult,
+  AgentStore,
   Handoff,
+  Principal,
+  ProposedToolCall,
   ResolvedToolCall,
+  RunRequest,
   RunStatus,
 } from './types';
 
-export interface Principal {
-  id: string;
-  role: Role;
-  grants: readonly Grant[];
-}
-
-export interface RunRequest {
-  workspaceId: string;
-  agentKey: string;
-  triggeredByKind: 'user' | 'system' | 'agent';
-  input: Record<string, unknown>;
-}
+export type { AgentStore, ApprovalRequestInput, Principal, RunRequest } from './types';
 
 export interface RunRecord {
   id: string;
@@ -53,26 +48,6 @@ export interface RunRecord {
   handoffs: Handoff[];
 }
 
-export interface ApprovalRequestInput {
-  workspaceId: string;
-  requestedBy: string;
-  module: string;
-  action: string;
-  title: string;
-  details: Record<string, unknown>;
-}
-
-/**
- * What the Orchestrator needs from the outside world. Sub-phase A tests it against a small
- * in-memory fake; a real Supabase service-role client is a drop-in replacement later without
- * changing runAgent()'s own logic.
- */
-export interface AgentStore {
-  findDefinition(workspaceId: string, agentKey: string): Promise<AgentDefinition | null>;
-  newId(): string;
-  createApprovalRequest(input: ApprovalRequestInput): Promise<{ id: string }>;
-}
-
 export type RunOutcome = { ok: true; run: RunRecord } | { ok: false; reason: string };
 
 /** The only entry point. Runs one agent once, start to finish. */
@@ -85,7 +60,7 @@ export async function runAgent(store: AgentStore, principal: Principal, request:
     return { ok: false, reason: `the "${definition.displayName}" agent is switched off for this workspace` };
   }
 
-  const logic = await invokeAgentLogic(request.agentKey, request.input);
+  const logic = await invokeAgentLogic(request.agentKey, request.input, store, principal);
 
   const resolved: ResolvedToolCall[] = [];
   let anyDenied = false;
@@ -99,7 +74,9 @@ export async function runAgent(store: AgentStore, principal: Principal, request:
       continue;
     }
     if (!call.permission) {
-      resolved.push({ ...call, toolOutput: { ok: true }, decision: null, onBehalfOf: null });
+      const resolvedCall = await applyIfAllowed(call, true);
+      if (resolvedCall.applyError) anyDenied = true;
+      resolved.push(resolvedCall);
       continue;
     }
 
@@ -118,13 +95,9 @@ export async function runAgent(store: AgentStore, principal: Principal, request:
       });
       approvalId = approval.id;
     }
-    resolved.push({
-      ...call,
-      toolOutput: decision.effect === 'allow' ? { ok: true } : null,
-      decision: decision.effect,
-      onBehalfOf: principal.id,
-      approvalId,
-    });
+    const resolvedCall = await applyIfAllowed(call, decision.effect === 'allow');
+    if (resolvedCall.applyError) anyDenied = true;
+    resolved.push({ ...resolvedCall, decision: decision.effect, onBehalfOf: principal.id, approvalId });
   }
 
   const status: RunStatus = anyDenied ? 'failed' : anyNeedsApproval ? 'needs_approval' : 'succeeded';
@@ -141,7 +114,7 @@ export async function runAgent(store: AgentStore, principal: Principal, request:
       status,
       input: request.input,
       output: logic.output,
-      errorMessage: anyDenied ? 'one or more proposed actions were refused by the permission rules' : null,
+      errorMessage: anyDenied ? 'one or more proposed actions were refused, or failed, while being carried out' : null,
       toolCalls: resolved,
       handoffs: logic.handoffs,
     },
@@ -149,11 +122,39 @@ export async function runAgent(store: AgentStore, principal: Principal, request:
 }
 
 /**
- * Sub-phase A has exactly one agent's logic. A later sub-phase adds a real dispatch table
- * here (and eventually a real AI call for agents other than the sandbox one) - never a change
- * to runAgent()'s own permission-checking logic above.
+ * Runs `call.apply()` when the call is allowed and has one, and shapes the result exactly as
+ * Sub-phase A's own placeholder outputs did for every call with no `apply()` - so a tool
+ * without one behaves identically to before this function existed.
  */
-async function invokeAgentLogic(agentKey: string, input: Record<string, unknown>): Promise<AgentLogicResult> {
+async function applyIfAllowed(call: ProposedToolCall, allowed: boolean): Promise<ResolvedToolCall> {
+  if (!allowed) return { ...call, toolOutput: null, decision: null, onBehalfOf: null };
+  if (!call.apply) return { ...call, toolOutput: { ok: true }, decision: null, onBehalfOf: null };
+  try {
+    const toolOutput = await call.apply();
+    return { ...call, toolOutput, decision: null, onBehalfOf: null };
+  } catch (error) {
+    return {
+      ...call,
+      toolOutput: null,
+      decision: null,
+      onBehalfOf: null,
+      applyError: error instanceof Error ? error.message : 'the action could not be carried out',
+    };
+  }
+}
+
+/**
+ * Sub-phase A shipped one agent's logic; Sub-phase B adds a second. A later sub-phase adds
+ * more cases here (and eventually a real AI call for agents other than these scripted ones) -
+ * never a change to runAgent()'s own permission-checking logic above.
+ */
+async function invokeAgentLogic(
+  agentKey: string,
+  input: Record<string, unknown>,
+  store: AgentStore,
+  principal: Principal,
+): Promise<AgentLogicResult> {
   if (agentKey === 'sandbox_echo') return runEchoAgent(input as unknown as EchoAgentInput);
+  if (agentKey === 'social_media_super_agent') return runSocialMediaSuperAgent(input as unknown as SocialAgentInput, store, principal);
   throw new Error(`no logic implemented yet for agent "${agentKey}"`);
 }

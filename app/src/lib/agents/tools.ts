@@ -43,6 +43,46 @@ export const TOOLS: Record<string, ToolDefinition> = {
     description: "A harmless stand-in for a normally-grantable sensitive action (like a budget change). Even when granted, it still always needs an Admin's approval.",
     permission: { module: 'paid_ads', action: 'publish_execute' },
   },
+
+  /**
+   * Sub-phase B adds six tools for the Social Media Super Agent. All six reuse the SAME,
+   * already-existing `social:create` action Phase 3 already uses for a human's own draft - no
+   * new permission module or action is introduced anywhere. There is deliberately no
+   * publish/send tool: this agent's own work stops at "submitted for review".
+   */
+  research_strategy: {
+    name: 'research_strategy',
+    description: 'Produces content pillars for a topic from the input given. No permission check - nothing is written.',
+  },
+  generate_calendar: {
+    name: 'generate_calendar',
+    description: 'Writes real social_content_calendar_items rows for a date range.',
+    permission: { module: 'social', action: 'create' },
+  },
+  draft_post: {
+    name: 'draft_post',
+    description: 'Writes a real social_posts row in "draft" status - the exact same table and status a human\'s own new post uses.',
+    permission: { module: 'social', action: 'create' },
+  },
+  submit_post_for_review: {
+    name: 'submit_post_for_review',
+    description: 'Moves a drafted post to "in_review" (pending approval) - the exact same Phase 3 state machine a human\'s own submission uses.',
+    permission: { module: 'social', action: 'create' },
+  },
+  draft_reply: {
+    name: 'draft_reply',
+    description: 'Writes a real social_reply_drafts row for one interaction (comment/DM), in "drafted" status.',
+    permission: { module: 'social', action: 'create' },
+  },
+  submit_reply_for_review: {
+    name: 'submit_reply_for_review',
+    description: 'Moves a drafted reply to "in_review" (pending approval).',
+    permission: { module: 'social', action: 'create' },
+  },
+  video_script: {
+    name: 'video_script',
+    description: 'Produces a Reels/short-video script (text only - no video is rendered). No permission check - nothing is written.',
+  },
 };
 
 export function toolDefinition(name: string): ToolDefinition | undefined {
