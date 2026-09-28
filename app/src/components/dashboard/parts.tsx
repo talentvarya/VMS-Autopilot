@@ -1,0 +1,109 @@
+import { useEffect, useRef, type ReactNode } from 'react';
+import { Check, FileText, Globe2, Megaphone, MoreHorizontal } from 'lucide-react';
+
+export function Stat({
+  icon,
+  tone,
+  label,
+  value,
+  change,
+}: {
+  icon: ReactNode;
+  tone: string;
+  label: string;
+  value: string;
+  change: string;
+}) {
+  return (
+    <div className="stat">
+      <div className={'stat-icon ' + tone}>{icon}</div>
+      <div>
+        <span>{label}</span>
+        <strong>{value}</strong>
+        <em>
+          ↗ {change} <small>vs last month</small>
+        </em>
+      </div>
+    </div>
+  );
+}
+
+export function Title({ text, right }: { text: string; right?: ReactNode }) {
+  return (
+    <div className="title">
+      <h3>{text}</h3>
+      {right}
+    </div>
+  );
+}
+
+export function Timeline({ text, meta }: { text: string; meta: string }) {
+  return (
+    <div className="timeline-item" role="listitem">
+      <i aria-hidden="true" />
+      <div>
+        <strong>{text}</strong>
+        <p>{meta}</p>
+      </div>
+    </div>
+  );
+}
+
+export function Approval({
+  title,
+  client,
+  age,
+  kind,
+  done,
+  onApprove,
+}: {
+  title: string;
+  client: string;
+  age: string;
+  kind: string;
+  done: boolean;
+  onApprove: () => void;
+}) {
+  const verb = kind === 'post' ? 'Review' : 'Approve';
+  // The Approve button turns into "Approved": keep keyboard focus on the result.
+  const doneRef = useRef<HTMLSpanElement>(null);
+  const wasDone = useRef(done);
+  useEffect(() => {
+    if (done && !wasDone.current) doneRef.current?.focus();
+    wasDone.current = done;
+  }, [done]);
+  return (
+    <div className="approval">
+      <span className={'approval-icon ' + kind} aria-hidden="true">
+        {kind === 'ads' ? (
+          <Megaphone size={16} />
+        ) : kind === 'post' ? (
+          <FileText size={16} />
+        ) : (
+          <Globe2 size={16} />
+        )}
+      </span>
+      <div>
+        <strong>{title}</strong>
+        <small>
+          {client} • {age}
+        </small>
+      </div>
+      {done ? (
+        <span className="done" ref={doneRef} tabIndex={-1}>
+          <Check size={13} aria-hidden="true" /> Approved
+        </span>
+      ) : (
+        <button
+          type="button"
+          className={kind === 'post' ? 'review' : 'approve'}
+          aria-label={`${verb}: ${title} for ${client}`}
+          onClick={onApprove}
+        >
+          {verb}
+        </button>
+      )}
+      <MoreHorizontal size={17} className="more" aria-hidden="true" />
+    </div>
+  );
+}

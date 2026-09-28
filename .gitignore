@@ -17,3 +17,6 @@ out/
 Thumbs.db
 .vscode/
 .vercel/
+
+# Next.js generated
+next-env.d.ts
