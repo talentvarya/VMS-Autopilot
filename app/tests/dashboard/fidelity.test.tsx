@@ -70,7 +70,7 @@ describe('stylesheet and assets', () => {
     // approved screen, so they cannot change how those look.
     const selectors = [...withoutMedia.matchAll(/([^{}]+)\{/g)]
       .map((m) => m[1].trim().replace(/\s+/g, ' '))
-      .filter((sel) => !sel.startsWith('.seo'));
+      .filter((sel) => !sel.startsWith('.seo') && !sel.startsWith('.soc'));
     expect(selectors.sort()).toEqual(
       [
         '.sr-only',
@@ -190,11 +190,11 @@ describe('the ported dashboard renders exactly like the approved App.tsx', () =>
   });
 
   it('shows the same placeholder for every other module', async () => {
-    const modules = ['Clients', 'Social Publishing', 'Paid Ads', 'Domains', 'Leads & CRM', 'AI Monitor', 'Reports', 'Settings'];
+    const modules = ['Clients', 'Paid Ads', 'Domains', 'Leads & CRM', 'AI Monitor', 'Reports', 'Settings'];
     const { approved, ported } = await compareRuns(modules);
     modules.forEach((label, i) => {
       expect(ported[i + 1], label).toEqual(approved[i + 1]);
     });
-    expect(ported[8].text).toContain('Settings');
+    expect(ported[modules.length].text).toContain('Settings');
   });
 });

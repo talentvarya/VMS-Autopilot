@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import SeoAuditModule from './SeoAuditModule';
+import SocialModule from './SocialModule';
 import { Approval, Stat, Timeline, Title } from './dashboard/parts';
 import { channelNames, chartBars, initialClients, nav, workspaceOptions, type ClientRow } from './dashboard/data';
 
@@ -287,6 +288,8 @@ export default function Dashboard() {
             </div>
             {active === 'SEO / GEO Audit' ? (
               <SeoAuditModule notify={notify} />
+            ) : active === 'Social Publishing' ? (
+              <SocialModule notify={notify} />
             ) : active !== 'Overview' ? (
               <div className="module">
                 <div className="module-icon" aria-hidden="true">

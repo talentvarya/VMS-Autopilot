@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "gen:permissions": "tsx scripts/generate-permission-seed.ts",
+    "gen:social": "tsx scripts/generate-social-seed.ts",
     "check": "npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
