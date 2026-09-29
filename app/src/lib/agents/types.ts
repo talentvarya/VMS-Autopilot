@@ -134,25 +134,45 @@ export interface CreateCalendarItemInput {
   generatedByAgent: boolean;
 }
 
+export interface QueueAuditInput {
+  workspaceId: string;
+  siteId: string;
+}
+
+export interface ProposeFixInput {
+  workspaceId: string;
+  findingId: string;
+  note?: string;
+}
+
+export interface CreateContentDraftInput {
+  workspaceId: string;
+  title: string;
+  body: string;
+  sourceFindingId?: string | null;
+  draftedByAgent: boolean;
+}
+
 /**
  * What the Orchestrator needs from the outside world. Sub-phase A tested it against a small
  * in-memory fake using only the first three methods; a real Supabase service-role client is a
  * drop-in replacement later without changing runAgent()'s own logic.
  *
- * The five `create*`/`submit*`/`getBrandVoiceProfile` methods are OPTIONAL: Sub-phase A's own
- * agent (sandbox_echo) never calls them, so its existing tests and behaviour are unaffected. An
- * agent whose tool calls DO define `apply()` (see ProposedToolCall) requires a store that
- * implements the specific methods it calls - see social/agent.ts.
+ * Every `create*`/`submit*`/`queue*`/`propose*`/`getBrandVoiceProfile` method is OPTIONAL:
+ * Sub-phase A's own agent (sandbox_echo) never calls any of them, so its existing tests and
+ * behaviour are unaffected. An agent whose tool calls DO define `apply()` (see
+ * ProposedToolCall) requires a store that implements the specific methods it calls.
  */
 export interface AgentStore {
   findDefinition(workspaceId: string, agentKey: string): Promise<AgentDefinition | null>;
   newId(): string;
   createApprovalRequest(input: ApprovalRequestInput): Promise<{ id: string }>;
   /**
-   * These five take the FULL acting Principal (not just an id) so a real implementation can
-   * scope its write exactly as that person's own session would (the same posture Phase 3's
-   * own SocialStore already uses for `createDraft()`/`transition()`) - an agent-authored write
-   * goes through precisely the same actor-checked path a human's own click already does.
+   * Every write method takes the FULL acting Principal (not just an id) so a real
+   * implementation can scope its write exactly as that person's own session would (the same
+   * posture Phase 3's own SocialStore already uses for `createDraft()`/`transition()`, and
+   * Phase 2's own `sites`/`audit_runs` RLS already expects) - an agent-authored write goes
+   * through precisely the same actor-checked path a human's own click already does.
    */
   createSocialPost?(principal: Principal, input: CreateSocialPostInput): Promise<{ id: string }>;
   submitSocialPostForReview?(principal: Principal, postId: string): Promise<void>;
@@ -160,4 +180,10 @@ export interface AgentStore {
   submitSocialReplyForReview?(principal: Principal, draftId: string): Promise<void>;
   createCalendarItem?(principal: Principal, input: CreateCalendarItemInput): Promise<{ id: string }>;
   getBrandVoiceProfile?(workspaceId: string): Promise<BrandVoiceProfile | null>;
+  /** Queues AND completes a sandbox audit run through the EXISTING Phase 2 executeAuditRun(). */
+  queueAudit?(principal: Principal, input: QueueAuditInput): Promise<{ runId: string }>;
+  /** Only ever called once decide() has already confirmed 'allow' (i.e. the principal is Admin). */
+  proposeFix?(principal: Principal, input: ProposeFixInput): Promise<void>;
+  createContentDraft?(principal: Principal, input: CreateContentDraftInput): Promise<{ id: string }>;
+  submitContentDraftForReview?(principal: Principal, draftId: string): Promise<void>;
 }

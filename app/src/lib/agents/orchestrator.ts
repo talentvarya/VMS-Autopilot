@@ -1,8 +1,10 @@
 /**
  * The AI Orchestrator - the only thing that ever invokes an agent or decides what an agent's
  * proposed action is allowed to do. See docs/AGENT-RUNTIME-ARCHITECTURE.md for the full design.
- * Sub-phase A wired one agent (sandbox_echo, proposal-only); Sub-phase B adds a second
- * (social_media_super_agent) whose allowed tool calls actually persist something real.
+ * Sub-phase A wired one agent (sandbox_echo, proposal-only); Sub-phase B added a second
+ * (social_media_super_agent) whose allowed tool calls actually persist something real;
+ * Sub-phase C adds two more (seo_geo_agent, content_agent) and, for the first time, lets the
+ * Orchestrator automatically resolve a handoff whose target agent actually exists.
  *
  * For every proposed tool call, in this order:
  *   1. If the tool is not on the agent's own allowed_tools list, refuse it. This list - not
@@ -13,11 +15,21 @@
  *   3. Only once a call is allowed (or needed no permission at all) does its own `apply()` run,
  *      if it has one. Sub-phase A's tools never define one, so their behaviour is unchanged.
  *      A tool WITH one still goes through the same functions a human's own click already uses
- *      (see social/agent.ts) - never a shortcut built for agents.
+ *      (see social/agent.ts, seo/agent.ts, content/agent.ts) - never a shortcut built for agents.
+ *
+ * For every handoff an agent proposes: the Orchestrator tries to run the target agent itself,
+ * using the SAME principal (so the whole chain stays bound by the same person's own role and
+ * grants, exactly as if they had triggered every step by hand) and `triggeredByKind: 'agent'`.
+ * If no enabled agent exists for that key in this workspace - which is exactly the case for
+ * 'analytics_reporting_agent' and 'lead_crm_agent' today - the handoff is recorded as
+ * unresolved, not treated as an error. A small depth limit stops a misconfigured pair of
+ * agents from handing off to each other forever.
  */
 
 import { decide } from '@/lib/permissions';
+import { runContentAgent, type ContentAgentInput } from './content/agent';
 import { runEchoAgent, type EchoAgentInput } from './echo-agent';
+import { runSeoGeoAgent, type SeoGeoAgentInput } from './seo/agent';
 import { runSocialMediaSuperAgent, type SocialAgentInput } from './social/agent';
 import { toolDefinition } from './tools';
 import type {
@@ -33,6 +45,15 @@ import type {
 
 export type { AgentStore, ApprovalRequestInput, Principal, RunRequest } from './types';
 
+/** The Orchestrator's own decision about one proposed handoff - not what the agent proposed. */
+export interface ResolvedHandoff extends Handoff {
+  resolved: boolean;
+  /** Present only when resolved: false - why it was left for later. */
+  reason?: string;
+  /** Present only when resolved: true. */
+  run?: RunRecord;
+}
+
 export interface RunRecord {
   id: string;
   workspaceId: string;
@@ -45,13 +66,18 @@ export interface RunRecord {
   output: Record<string, unknown> | null;
   errorMessage: string | null;
   toolCalls: ResolvedToolCall[];
+  /** Exactly what the agent proposed - unchanged shape from Sub-phases A/B. */
   handoffs: Handoff[];
+  /** What the Orchestrator actually did about each of those handoffs, in the same order. */
+  resolvedHandoffs: ResolvedHandoff[];
 }
 
 export type RunOutcome = { ok: true; run: RunRecord } | { ok: false; reason: string };
 
-/** The only entry point. Runs one agent once, start to finish. */
-export async function runAgent(store: AgentStore, principal: Principal, request: RunRequest): Promise<RunOutcome> {
+const MAX_HANDOFF_DEPTH = 5;
+
+/** The only entry point. Runs one agent once, start to finish, then resolves its handoffs. */
+export async function runAgent(store: AgentStore, principal: Principal, request: RunRequest, depth = 0): Promise<RunOutcome> {
   const definition = await store.findDefinition(request.workspaceId, request.agentKey);
   if (!definition) {
     return { ok: false, reason: `no agent named "${request.agentKey}" is configured for this workspace` };
@@ -101,6 +127,7 @@ export async function runAgent(store: AgentStore, principal: Principal, request:
   }
 
   const status: RunStatus = anyDenied ? 'failed' : anyNeedsApproval ? 'needs_approval' : 'succeeded';
+  const resolvedHandoffs = await resolveHandoffs(store, principal, request.workspaceId, logic.handoffs, depth);
 
   return {
     ok: true,
@@ -117,8 +144,45 @@ export async function runAgent(store: AgentStore, principal: Principal, request:
       errorMessage: anyDenied ? 'one or more proposed actions were refused, or failed, while being carried out' : null,
       toolCalls: resolved,
       handoffs: logic.handoffs,
+      resolvedHandoffs,
     },
   };
+}
+
+/**
+ * Tries to run the target agent for each proposed handoff, using the SAME principal. A
+ * handoff whose target agent has no enabled definition in this workspace - or whose logic
+ * simply doesn't exist yet - is left unresolved rather than treated as a failure: that is
+ * exactly the expected, documented state for 'analytics_reporting_agent' and 'lead_crm_agent'
+ * today. The depth limit exists only to stop a future misconfiguration (two agents handing
+ * off to each other) from recursing forever; it is not expected to ever be hit in practice.
+ */
+async function resolveHandoffs(
+  store: AgentStore,
+  principal: Principal,
+  workspaceId: string,
+  handoffs: Handoff[],
+  depth: number,
+): Promise<ResolvedHandoff[]> {
+  const results: ResolvedHandoff[] = [];
+  for (const handoff of handoffs) {
+    if (depth >= MAX_HANDOFF_DEPTH) {
+      results.push({ ...handoff, resolved: false, reason: 'handoff depth limit reached' });
+      continue;
+    }
+    try {
+      const outcome = await runAgent(
+        store,
+        principal,
+        { workspaceId, agentKey: handoff.toAgentKey, triggeredByKind: 'agent', input: handoff.payload },
+        depth + 1,
+      );
+      results.push(outcome.ok ? { ...handoff, resolved: true, run: outcome.run } : { ...handoff, resolved: false, reason: outcome.reason });
+    } catch (error) {
+      results.push({ ...handoff, resolved: false, reason: error instanceof Error ? error.message : 'the handoff could not be resolved' });
+    }
+  }
+  return results;
 }
 
 /**
@@ -144,9 +208,9 @@ async function applyIfAllowed(call: ProposedToolCall, allowed: boolean): Promise
 }
 
 /**
- * Sub-phase A shipped one agent's logic; Sub-phase B adds a second. A later sub-phase adds
+ * Sub-phase A shipped one agent's logic; Sub-phases B and C add more. A later sub-phase adds
  * more cases here (and eventually a real AI call for agents other than these scripted ones) -
- * never a change to runAgent()'s own permission-checking logic above.
+ * never a change to runAgent()'s own permission-checking or handoff-resolution logic above.
  */
 async function invokeAgentLogic(
   agentKey: string,
@@ -156,5 +220,7 @@ async function invokeAgentLogic(
 ): Promise<AgentLogicResult> {
   if (agentKey === 'sandbox_echo') return runEchoAgent(input as unknown as EchoAgentInput);
   if (agentKey === 'social_media_super_agent') return runSocialMediaSuperAgent(input as unknown as SocialAgentInput, store, principal);
+  if (agentKey === 'seo_geo_agent') return runSeoGeoAgent(input as unknown as SeoGeoAgentInput, store, principal);
+  if (agentKey === 'content_agent') return runContentAgent(input as unknown as ContentAgentInput, store, principal);
   throw new Error(`no logic implemented yet for agent "${agentKey}"`);
 }

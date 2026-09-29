@@ -83,6 +83,38 @@ export const TOOLS: Record<string, ToolDefinition> = {
     name: 'video_script',
     description: 'Produces a Reels/short-video script (text only - no video is rendered). No permission check - nothing is written.',
   },
+
+  /**
+   * Sub-phase C adds five tools for the SEO/GEO Agent and the Content Agent. All five reuse
+   * the EXISTING `seo_geo` module's EXISTING actions from Phase 2 - no new permission module
+   * or action anywhere. There is no tool here that approves or publishes anything: an article
+   * draft goes exactly as far as "submitted for review", and a fix record is the only thing
+   * "publish_execute" ever means for this module (it never touches a real website).
+   */
+  queue_audit: {
+    name: 'queue_audit',
+    description: 'Queues and completes a sandbox audit run through the EXISTING Phase 2 engine and fixture sites - never a real website.',
+    permission: { module: 'seo_geo', action: 'create' },
+  },
+  explain_findings: {
+    name: 'explain_findings',
+    description: 'Summarizes already-fetched audit findings in plain language. No permission check - nothing is written.',
+  },
+  propose_fix: {
+    name: 'propose_fix',
+    description: 'Records that a recommendation was applied (Phase 2\'s own fix_status field). Never changes a real website. Sensitive - in practice only an Admin can do it directly.',
+    permission: { module: 'seo_geo', action: 'publish_execute' },
+  },
+  draft_article: {
+    name: 'draft_article',
+    description: 'Writes a real content_drafts row in "draft" status. This agent has no tool that approves or publishes it.',
+    permission: { module: 'seo_geo', action: 'create' },
+  },
+  submit_article_for_review: {
+    name: 'submit_article_for_review',
+    description: 'Moves a drafted article to "in_review" (pending approval).',
+    permission: { module: 'seo_geo', action: 'create' },
+  },
 };
 
 export function toolDefinition(name: string): ToolDefinition | undefined {
