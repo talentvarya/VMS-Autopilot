@@ -13,6 +13,7 @@ import { Title } from './dashboard/parts';
 import CalendarView from './social/CalendarView';
 import ChannelsPanel from './social/ChannelsPanel';
 import Composer, { type RealClient } from './social/Composer';
+import FlyerGenerator from './social/FlyerGenerator';
 import PostItem from './social/PostItem';
 
 /**
@@ -191,6 +192,9 @@ export default function SocialModule({ notify, realClients = [], initialPreview 
       <p className="seo-badge-sample">
         <ShieldCheck size={15} aria-hidden="true" /> Sandbox: these are invented clients and channels. Nothing is connected to Buffer or to any social network, and publishing here only pretends.
       </p>
+
+      <FlyerGenerator realClients={realClients} notify={notify} />
+
       {!canCreate && (
         <p className="seo-note">You can look at the channels, the calendar and every post. Your agency writes and schedules posts. Ask them if you would like to write drafts or approve posts.</p>
       )}
