@@ -220,6 +220,49 @@ export default function Dashboard() {
     }
   };
 
+  const [openClientMenuId, setOpenClientMenuId] = useState<string | null>(null);
+
+  const renameClient = async (id: string, currentName: string) => {
+    const name = window.prompt('Rename client', currentName)?.trim();
+    if (!name || name === currentName) return;
+    try {
+      const res = await fetch(`/api/workspaces/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        notify(body.error || 'Could not rename client');
+        return;
+      }
+      setClientRows(rows => rows.map(row => (row.id === id ? toClientRow({ ...row, name, industry: row.type, kind: 'client', created_at: '' }) : row)));
+      notify('Renamed to ' + name);
+    } catch {
+      notify('Could not rename client — check your connection');
+    }
+  };
+
+  const archiveClient = async (id: string, name: string) => {
+    if (!window.confirm(`Archive ${name}? It will be hidden from the client list.`)) return;
+    try {
+      const res = await fetch(`/api/workspaces/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archive: true }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        notify(body.error || 'Could not archive client');
+        return;
+      }
+      setClientRows(rows => rows.filter(row => row.id !== id));
+      notify(name + ' archived');
+    } catch {
+      notify('Could not archive client — check your connection');
+    }
+  };
+
   // Real approval queue (app/src/app/api/approval-requests/route.ts). A fresh account has
   // no rows here yet - nothing has gone through a "needs approval" action yet - which is
   // correct, not a bug.
@@ -471,7 +514,50 @@ export default function Dashboard() {
                 <i aria-hidden="true" />
                 {client.health}
               </div>
-              <MoreHorizontal size={17} className="more" aria-hidden="true" />
+              <div role="cell" style={{ position: 'relative' }}>
+                <button
+                  type="button"
+                  aria-label={`More actions for ${client.name}`}
+                  aria-expanded={openClientMenuId === client.id}
+                  onClick={() => setOpenClientMenuId(id => (id === client.id ? null : client.id))}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}
+                >
+                  <MoreHorizontal size={17} className="more" aria-hidden="true" />
+                </button>
+                {openClientMenuId === client.id && (
+                  <div
+                    role="menu"
+                    style={{
+                      position: 'absolute',
+                      right: 0,
+                      top: '100%',
+                      zIndex: 10,
+                      background: '#fff',
+                      border: '1px solid #e2e5ec',
+                      borderRadius: 8,
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                      minWidth: 140,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => { setOpenClientMenuId(null); renameClient(client.id, client.name); }}
+                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', background: 'none', border: 'none', cursor: 'pointer' }}
+                    >
+                      Rename
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => { setOpenClientMenuId(null); archiveClient(client.id, client.name); }}
+                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', background: 'none', border: 'none', cursor: 'pointer', color: '#c0392b' }}
+                    >
+                      Archive
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           ))}
         </div>

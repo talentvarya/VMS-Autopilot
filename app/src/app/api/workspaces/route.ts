@@ -18,6 +18,7 @@ export async function GET() {
     .from('workspaces')
     .select('id, name, industry, kind, created_at')
     .eq('kind', 'client')
+    .is('archived_at', null)
     .order('created_at', { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
