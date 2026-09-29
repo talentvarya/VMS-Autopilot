@@ -1,12 +1,15 @@
 import type {
   AgentDefinition,
   AgentStore,
+  AiUsageCapStatus,
   ApprovalRequestInput,
   CreateCalendarItemInput,
   CreateSocialPostInput,
   CreateSocialReplyDraftInput,
   Principal,
+  RecordAiUsageInput,
 } from '@/lib/agents/types';
+import type { AuditEvent } from '@/lib/permissions';
 import type { BrandVoiceProfile } from '@/lib/agents/social/types';
 import { SocialStore } from '@/lib/social/store';
 
@@ -27,6 +30,10 @@ export class SocialAgentFixtureStore implements AgentStore {
   calendarItems: (CreateCalendarItemInput & { id: string })[] = [];
   replyDrafts: (CreateSocialReplyDraftInput & { id: string; status: 'drafted' | 'in_review' })[] = [];
   brandVoice: BrandVoiceProfile | null = null;
+  /** Phase F.2: set per-test to simulate a workspace's current cap standing. Unlimited by default. */
+  aiUsageCapStatus: AiUsageCapStatus = { dailyCallCap: null, monthlyCostCapUsd: null, dailyCallCount: 0, monthlyCostUsd: 0 };
+  aiUsageRecords: RecordAiUsageInput[] = [];
+  auditEvents: AuditEvent[] = [];
   private n = 0;
 
   constructor(definitions: AgentDefinition[], socialStore: SocialStore) {
@@ -81,5 +88,15 @@ export class SocialAgentFixtureStore implements AgentStore {
 
   async getBrandVoiceProfile() {
     return this.brandVoice;
+  }
+
+  async getAiUsageCapStatus(): Promise<AiUsageCapStatus> {
+    return this.aiUsageCapStatus;
+  }
+  async recordAiUsage(input: RecordAiUsageInput) {
+    this.aiUsageRecords.push(input);
+  }
+  async recordAuditEvent(event: AuditEvent) {
+    this.auditEvents.push(event);
   }
 }

@@ -44,6 +44,12 @@ export const STAGING_ENV_SPEC: readonly EnvVarSpec[] = [
     purpose: 'AI provider key - not required until the AI-provider integration sub-phase is approved and built',
   },
   {
+    name: 'ANTHROPIC_MODEL',
+    required: false,
+    shape: { kind: 'nonEmpty' },
+    purpose: 'overrides the default AI model (claude-sonnet-5-5) - optional, only read once ANTHROPIC_API_KEY is also configured',
+  },
+  {
     name: 'META_APP_ID',
     required: false,
     shape: { kind: 'nonEmpty' },

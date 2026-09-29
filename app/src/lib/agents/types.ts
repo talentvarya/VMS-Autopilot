@@ -2,12 +2,12 @@
  * VMS Autopilot Runtime-Agent Phase, Sub-phase A - shared vocabulary.
  *
  * Mirrors the tables and check constraints in
- * supabase/migrations/20260929000100_agents_foundation.sql. Nothing here calls any AI
- * provider, holds any key, or reaches any network - see echo-agent.ts for the one
- * (scripted, deterministic) agent that exists so far.
+ * supabase/migrations/20260929000100_agents_foundation.sql. Most agent logic here is still
+ * scripted/deterministic and calls no AI provider - Phase F.2 (src/lib/agents/social/
+ * caption-ai-provider.ts) is the first exception, and it is the only one.
  */
 
-import type { Action, ApprovalStatus, Grant, Module, Role } from '@/lib/permissions';
+import type { Action, ApprovalStatus, AuditEvent, Grant, Module, Role } from '@/lib/permissions';
 import type { Network } from '@/lib/social/types';
 import type { BrandVoiceProfile } from './social/types';
 
@@ -367,4 +367,28 @@ export interface AgentStore {
    * in TypeScript first purely so a bad call fails with a clear reason before ever reaching SQL.
    */
   decideApprovalRequest?(approvalId: string, decidedBy: string, status: 'approved' | 'rejected', note?: string): Promise<void>;
+  /** Phase F.2: current AI usage totals for a workspace, read before any real AI call is made. */
+  getAiUsageCapStatus?(workspaceId: string): Promise<AiUsageCapStatus>;
+  /** Phase F.2: logs one REAL, successful AI call - never a blocked attempt (see recordAuditEvent). */
+  recordAiUsage?(input: RecordAiUsageInput): Promise<void>;
+  /** Phase F.2 (and reusable beyond it): the app-layer audit write for an event the database itself never sees - see src/lib/permissions/audit.ts. */
+  recordAuditEvent?(event: AuditEvent): Promise<void>;
+}
+
+/** Phase F.2 - mirrors src/lib/ai/usage-cap.ts's own AiUsageCapStatus exactly. */
+export interface AiUsageCapStatus {
+  dailyCallCap: number | null;
+  monthlyCostCapUsd: number | null;
+  dailyCallCount: number;
+  monthlyCostUsd: number;
+}
+
+export interface RecordAiUsageInput {
+  workspaceId: string;
+  agentRunId?: string | null;
+  provider: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  estimatedCostUsd: number;
 }

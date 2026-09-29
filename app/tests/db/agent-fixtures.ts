@@ -2,6 +2,7 @@ import { executeAuditRun } from '@/lib/seo/run-audit';
 import type {
   AgentDefinition,
   AgentStore,
+  AiUsageCapStatus,
   ApprovalRequestInput,
   CreateCalendarItemInput,
   CreateContentDraftInput,
@@ -10,7 +11,9 @@ import type {
   Principal,
   ProposeFixInput,
   QueueAuditInput,
+  RecordAiUsageInput,
 } from '@/lib/agents/types';
+import type { AuditEvent } from '@/lib/permissions';
 import type { BrandVoiceProfile } from '@/lib/agents/social/types';
 import { SocialStore } from '@/lib/social/store';
 import { ID, asOwner, asService, asUser, rows, type Db } from './harness';
@@ -123,6 +126,63 @@ export class SeoContentSocialFixtureStore implements AgentStore {
   }
   async submitContentDraftForReview(principal: Principal, draftId: string) {
     await asUser(this.db, principal.id, () => this.db.query(`update public.content_drafts set status = 'in_review' where id = $1`, [draftId]));
+  }
+
+  // -- Phase F.2: AI usage caps + the app-layer audit write (real Postgres: ai_usage_log /
+  // audit_log, both from migration 20260929000600 / foundation_schema.sql) ------------------
+  async getAiUsageCapStatus(workspaceId: string): Promise<AiUsageCapStatus> {
+    const [settings] = await asOwner(this.db, () =>
+      rows<{ ai_daily_call_cap: number | null; ai_monthly_cost_cap_usd: string | null }>(
+        this.db,
+        `select ai_daily_call_cap, ai_monthly_cost_cap_usd from public.workspace_settings where workspace_id = $1`,
+        [workspaceId],
+      ),
+    );
+    const [{ daily_count }] = await asOwner(this.db, () =>
+      rows<{ daily_count: string }>(
+        this.db,
+        `select count(*)::text as daily_count from public.ai_usage_log where workspace_id = $1 and created_at >= date_trunc('day', now())`,
+        [workspaceId],
+      ),
+    );
+    const [{ monthly_cost }] = await asOwner(this.db, () =>
+      rows<{ monthly_cost: string }>(
+        this.db,
+        `select coalesce(sum(estimated_cost_usd), 0)::text as monthly_cost from public.ai_usage_log where workspace_id = $1 and created_at >= date_trunc('month', now())`,
+        [workspaceId],
+      ),
+    );
+    return {
+      dailyCallCap: settings?.ai_daily_call_cap ?? null,
+      monthlyCostCapUsd: settings?.ai_monthly_cost_cap_usd != null ? Number(settings.ai_monthly_cost_cap_usd) : null,
+      dailyCallCount: Number(daily_count),
+      monthlyCostUsd: Number(monthly_cost),
+    };
+  }
+
+  /** Only a REAL, successful call ever reaches here - the server-role write matches Phase F.1's own precedent for ai_usage_log. */
+  async recordAiUsage(input: RecordAiUsageInput) {
+    await asService(this.db, () =>
+      this.db.query(
+        `insert into public.ai_usage_log (workspace_id, agent_run_id, provider, model, input_tokens, output_tokens, estimated_cost_usd) values ($1, $2, $3, $4, $5, $6, $7)`,
+        [input.workspaceId, input.agentRunId ?? null, input.provider, input.model, input.inputTokens, input.outputTokens, input.estimatedCostUsd],
+      ),
+    );
+  }
+
+  /** The app-layer audit write for an event the database itself never sees (src/lib/permissions/audit.ts). */
+  async recordAuditEvent(event: AuditEvent) {
+    await asService(this.db, () =>
+      this.db.query(
+        `insert into public.audit_log (actor_id, actor_role, workspace_id, module, action, target_type, target_id, result, approval_id, approval_status, metadata)
+         values ($1, $2, $3, $4::public.permission_module, $5, $6, $7, $8::public.audit_result, $9, $10::public.approval_status, $11)`,
+        [
+          event.actorId, event.actorRole, event.workspaceId, event.module, event.action,
+          event.targetType ?? null, event.targetId ?? null, event.result, event.approvalId ?? null,
+          event.approvalStatus ?? null, JSON.stringify(event.metadata ?? {}),
+        ],
+      ),
+    );
   }
 }
 

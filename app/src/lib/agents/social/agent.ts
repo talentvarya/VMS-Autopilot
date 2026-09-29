@@ -14,10 +14,13 @@
  * unchanged.
  */
 
+import { decide } from '@/lib/permissions';
+import { AiUsageCapExceededError, checkAiUsageCap, estimateCostUsd, recordAiCapBlockedEvent, recordAiUsage } from '@/lib/ai/usage-cap';
+import { getConfiguredModel } from '@/lib/ai/anthropic-client';
 import type { Network } from '@/lib/social/types';
 import type { AgentLogicResult, AgentStore, Handoff, Principal, ProposedToolCall } from '../types';
-import { draftForEachNetwork } from './captions';
 import { buildCalendarSlots } from './calendar';
+import { createCaptionProvider, SandboxCaptionProvider, type CaptionProvider } from './caption-ai-provider';
 import { createImageProvider, type ImageProvider } from './image';
 import { repurposeBlogPost } from './repurpose';
 import { draftReplyBody } from './replies';
@@ -66,6 +69,75 @@ export type SocialAgentInput =
 async function brandVoiceIssues(store: AgentStore, workspaceId: string, text: string) {
   const profile: BrandVoiceProfile | null = (await store.getBrandVoiceProfile?.(workspaceId)) ?? null;
   return checkBrandVoice(profile, text);
+}
+
+/**
+ * Phase F.2: draft_post's caption text. Sandbox by default and always for anyone who has not
+ * already been granted social:create - the real AI path is attempted ONLY once BOTH the
+ * compile-time LIVE_SOCIAL_CAPTION_AI_ENABLED switch is on (createCaptionProvider() itself
+ * enforces this, together with the environment-tier check) AND the acting principal already
+ * holds social:create. That permission check here is advisory-only, purely to avoid spending
+ * money generating a caption for a post the Orchestrator's own decide() is going to deny
+ * anyway - it does not weaken or replace the Orchestrator's own, independent authorization of
+ * the resulting draft_post tool call.
+ *
+ * A cap-blocked or failed real call fails the WHOLE task loudly (the error propagates out of
+ * runSocialMediaSuperAgent, caught by the Orchestrator exactly like a malformed input) - it
+ * never falls back to the sandbox writer, and it is never retried automatically.
+ *
+ * Exported so a unit test can exercise the cap-check/audit-write wiring directly via
+ * `providerOverride` - production code (the draft_post branch below) never passes one, so
+ * staging and production always go through the real createCaptionProvider() selection.
+ * `providerOverride` can ONLY ever substitute for what createCaptionProvider() would have
+ * returned to an ALREADY-authorized principal - an unauthorized principal always gets the
+ * sandbox writer regardless of any override, so this cannot be used to bypass the permission
+ * gate itself.
+ */
+export async function generateCaptionText(
+  store: AgentStore,
+  principal: Principal,
+  workspaceId: string,
+  network: Network,
+  topic: string,
+  callToAction: string | undefined,
+  providerOverride?: CaptionProvider,
+): Promise<string> {
+  const mayAttemptReal = decide({ role: principal.role, grants: principal.grants }, 'social', 'create').effect === 'allow';
+  const provider: CaptionProvider = mayAttemptReal ? providerOverride ?? createCaptionProvider() : new SandboxCaptionProvider();
+
+  if (provider.kind === 'sandbox') {
+    const result = await provider.generateCaption({ network, topic, callToAction });
+    return result.text;
+  }
+
+  try {
+    await checkAiUsageCap(store, workspaceId);
+  } catch (error) {
+    if (error instanceof AiUsageCapExceededError) await recordAiCapBlockedEvent(store, principal, workspaceId, error.message);
+    throw error;
+  }
+
+  const result = await provider.generateCaption({ network, topic, callToAction });
+  const model = getConfiguredModel();
+  // The pre-check above is intentionally conservative (it only checks the total ALREADY at or
+  // over the cap, not what this specific call's own cost would push it to - see usage-cap.ts).
+  // The database's own Phase F.1 trigger is the exact, per-call backstop: if IT refuses this
+  // insert (the real call has already happened by now, so this is a rare boundary case, not
+  // the normal path), that is also audited here, then re-thrown - fail loud either way.
+  try {
+    await recordAiUsage(store, {
+      workspaceId,
+      provider: 'anthropic',
+      model,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+      estimatedCostUsd: estimateCostUsd(model, result.inputTokens, result.outputTokens),
+    });
+  } catch (error) {
+    await recordAiCapBlockedEvent(store, principal, workspaceId, error instanceof Error ? error.message : 'AI usage could not be logged after a real call');
+    throw error;
+  }
+  return result.text;
 }
 
 /** A `draft_post` tool call whose `apply()` writes the real row, honouring the brand-voice gate. */
@@ -126,7 +198,7 @@ export async function runSocialMediaSuperAgent(input: SocialAgentInput, store: A
     });
     output = { slots };
   } else if (input.task === 'draft_post') {
-    const text = draftForEachNetwork(input.topic, [input.network], input.callToAction)[input.network];
+    const text = await generateCaptionText(store, principal, input.workspaceId, input.network, input.topic, input.callToAction);
     const issues = await brandVoiceIssues(store, input.workspaceId, text);
     if (hasBlockingIssue(issues)) {
       output = { blocked: true, reason: 'brand voice check failed', issues };
