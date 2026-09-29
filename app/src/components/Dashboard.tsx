@@ -18,10 +18,67 @@ import {
 } from 'lucide-react';
 import SeoAuditModule from './SeoAuditModule';
 import SocialModule from './SocialModule';
-import { Approval, Stat, Timeline, Title } from './dashboard/parts';
+import { Approval, SimpleTable, Stat, Timeline, Title } from './dashboard/parts';
 import { channelNames, chartBars, nav, workspaceOptions, type ClientRow } from './dashboard/data';
+import { useLazyList } from './dashboard/hooks';
+import { useRouter } from 'next/navigation';
+import { createClient as createBrowserSupabaseClient } from '@/lib/supabase/client';
 
 type WorkspaceApiRow = { id: string; name: string; industry: string | null; kind: string; created_at: string };
+type WorkspaceRef = { name: string } | null;
+type ApprovalApiRow = {
+  id: string;
+  workspace_id: string;
+  module: string;
+  action: string;
+  title: string;
+  status: string;
+  created_at: string;
+  workspaces: WorkspaceRef;
+};
+type CampaignRow = {
+  id: string;
+  platform: string;
+  objective: string;
+  name: string;
+  status: string;
+  budget_amount: number | null;
+  budget_period: string | null;
+  created_at: string;
+  workspaces: WorkspaceRef;
+};
+type LeadRow = {
+  id: string;
+  source: string;
+  name: string | null;
+  contact: string | null;
+  status: string;
+  created_at: string;
+  workspaces: WorkspaceRef;
+};
+type WebsiteProjectRow = {
+  id: string;
+  provider: string;
+  title: string;
+  status: string;
+  created_at: string;
+  workspaces: WorkspaceRef;
+};
+type HealthIncidentRow = {
+  id: string;
+  check_type: string;
+  opened_at: string;
+  closed_at: string | null;
+  auto_repair_attempted: boolean;
+  workspaces: WorkspaceRef;
+};
+type HealthCheckRow = {
+  id: string;
+  check_type: string;
+  status: string;
+  checked_at: string;
+  workspaces: WorkspaceRef;
+};
 
 function toClientRow(w: WorkspaceApiRow): ClientRow {
   return {
@@ -37,6 +94,21 @@ function toClientRow(w: WorkspaceApiRow): ClientRow {
   };
 }
 
+// "2 hours ago" - relative time for real timestamps in place of the old fixed mock text.
+function timeAgo(iso: string): string {
+  const seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return minutes + (minutes === 1 ? ' minute ago' : ' minutes ago');
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return hours + (hours === 1 ? ' hour ago' : ' hours ago');
+  const days = Math.floor(hours / 24);
+  return days + (days === 1 ? ' day ago' : ' days ago');
+}
+
+const approvalKind = (module: string) =>
+  module === 'paid_ads' ? 'ads' : module === 'social' ? 'post' : 'domain';
+
 const DEFAULT_TITLE = 'VMS Autopilot — AI-Powered Marketing Automation Platform';
 
 /**
@@ -46,12 +118,16 @@ const DEFAULT_TITLE = 'VMS Autopilot — AI-Powered Marketing Automation Platfor
  * only appears below 1100px wide.
  */
 export default function Dashboard() {
+  const router = useRouter();
   const [active, setActive] = useState('Overview');
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [workspace, setWorkspace] = useState('Acme Marketing');
   const [workspaces, setWorkspaces] = useState(false);
   const [clientRows, setClientRows] = useState<ClientRow[]>([]);
   const [clientsLoaded, setClientsLoaded] = useState(false);
-  const [approved, setApproved] = useState<number[]>([]);
+  const [approvals, setApprovals] = useState<ApprovalApiRow[]>([]);
+  const [approvalsLoaded, setApprovalsLoaded] = useState(false);
+  const [decidingApprovalId, setDecidingApprovalId] = useState<string | null>(null);
   const [toast, setToast] = useState('');
   const [announcement, setAnnouncement] = useState('');
   const [navAnnouncement, setNavAnnouncement] = useState('');
@@ -143,6 +219,102 @@ export default function Dashboard() {
       notify('Could not create client — check your connection');
     }
   };
+
+  // Real approval queue (app/src/app/api/approval-requests/route.ts). A fresh account has
+  // no rows here yet - nothing has gone through a "needs approval" action yet - which is
+  // correct, not a bug.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/approval-requests');
+        const body = await res.json();
+        if (cancelled) return;
+        if (!res.ok) {
+          notify(body.error || 'Could not load approvals');
+          return;
+        }
+        setApprovals((body.approvals as ApprovalApiRow[]) ?? []);
+      } catch {
+        if (!cancelled) notify('Could not load approvals — check your connection');
+      } finally {
+        if (!cancelled) setApprovalsLoaded(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Real signed-in identity for the Settings tab.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const supabase = createBrowserSupabaseClient();
+      const { data } = await supabase.auth.getUser();
+      if (!cancelled) setUserEmail(data.user?.email ?? null);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const signOut = async () => {
+    const supabase = createBrowserSupabaseClient();
+    await supabase.auth.signOut();
+    router.push('/login');
+    router.refresh();
+  };
+
+  const decideApproval = async (id: string, status: 'approved' | 'rejected') => {
+    setDecidingApprovalId(id);
+    try {
+      const res = await fetch('/api/approval-requests', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        notify(body.error || 'Could not update approval');
+        return;
+      }
+      setApprovals(rows => rows.filter(row => row.id !== id));
+      notify(status === 'approved' ? 'Approval completed and logged' : 'Request rejected');
+    } catch {
+      notify('Could not update approval — check your connection');
+    } finally {
+      setDecidingApprovalId(null);
+    }
+  };
+
+  const [campaigns, campaignsLoaded] = useLazyList<CampaignRow>(active, 'Paid Ads', '/api/ad-campaigns', notify, 'campaigns');
+  const [leads, leadsLoaded] = useLazyList<LeadRow>(active, 'Leads & CRM', '/api/leads', notify, 'leads');
+  const [websiteProjects, websiteProjectsLoaded] = useLazyList<WebsiteProjectRow>(active, 'Domains', '/api/website-projects', notify, 'domain projects');
+
+  // AI Monitor needs two lists (open incidents + recent checks) from one endpoint, so it
+  // can't use the single-list useLazyList hook.
+  const [healthIncidents, setHealthIncidents] = useState<HealthIncidentRow[]>([]);
+  const [healthChecks, setHealthChecks] = useState<HealthCheckRow[]>([]);
+  const [healthLoaded, setHealthLoaded] = useState(false);
+  useEffect(() => {
+    if (active !== 'AI Monitor' || healthLoaded) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/health');
+        const body = await res.json();
+        if (cancelled) return;
+        if (!res.ok) {
+          notify(body.error || 'Could not load health monitor');
+          return;
+        }
+        setHealthIncidents((body.incidents as HealthIncidentRow[]) ?? []);
+        setHealthChecks((body.checks as HealthCheckRow[]) ?? []);
+      } catch {
+        if (!cancelled) notify('Could not load health monitor — check your connection');
+      } finally {
+        if (!cancelled) setHealthLoaded(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [active, healthLoaded]);
 
   // --- Mobile navigation drawer (only visible below 1100px) ---------------------------
   const closeNav = useCallback(() => {
@@ -418,6 +590,122 @@ export default function Dashboard() {
               <SocialModule notify={notify} />
             ) : active === 'Clients' ? (
               clientWorkspacesCard
+            ) : active === 'Paid Ads' ? (
+              <section className="card">
+                <Title text="Ad Campaigns" />
+                <SimpleTable
+                  label="Ad campaigns"
+                  loaded={campaignsLoaded}
+                  emptyMessage="No ad campaigns yet."
+                  rows={campaigns}
+                  rowKey={row => row.id}
+                  columns={[
+                    { header: 'Client', render: row => row.workspaces?.name ?? '—' },
+                    { header: 'Campaign', render: row => row.name },
+                    { header: 'Platform', render: row => row.platform },
+                    { header: 'Status', render: row => row.status },
+                    {
+                      header: 'Budget',
+                      render: row =>
+                        row.budget_amount != null ? `${row.budget_amount} / ${row.budget_period ?? 'total'}` : '—',
+                    },
+                    { header: 'Created', render: row => timeAgo(row.created_at) },
+                  ]}
+                />
+              </section>
+            ) : active === 'Leads & CRM' ? (
+              <section className="card">
+                <Title text="Leads" />
+                <SimpleTable
+                  label="Leads"
+                  loaded={leadsLoaded}
+                  emptyMessage="No leads yet."
+                  rows={leads}
+                  rowKey={row => row.id}
+                  columns={[
+                    { header: 'Client', render: row => row.workspaces?.name ?? '—' },
+                    { header: 'Name', render: row => row.name ?? 'Unnamed lead' },
+                    { header: 'Contact', render: row => row.contact ?? '—' },
+                    { header: 'Source', render: row => row.source },
+                    { header: 'Status', render: row => row.status },
+                    { header: 'Created', render: row => timeAgo(row.created_at) },
+                  ]}
+                />
+              </section>
+            ) : active === 'Domains' ? (
+              <section className="card">
+                <Title text="Website Projects" />
+                <SimpleTable
+                  label="Website projects"
+                  loaded={websiteProjectsLoaded}
+                  emptyMessage="No website projects yet."
+                  rows={websiteProjects}
+                  rowKey={row => row.id}
+                  columns={[
+                    { header: 'Client', render: row => row.workspaces?.name ?? '—' },
+                    { header: 'Title', render: row => row.title },
+                    { header: 'Provider', render: row => row.provider },
+                    { header: 'Status', render: row => row.status },
+                    { header: 'Created', render: row => timeAgo(row.created_at) },
+                  ]}
+                />
+              </section>
+            ) : active === 'AI Monitor' ? (
+              <>
+                <section className="card">
+                  <Title text="Open Incidents" />
+                  <SimpleTable
+                    label="Open incidents"
+                    loaded={healthLoaded}
+                    emptyMessage="No open incidents — everything is healthy."
+                    rows={healthIncidents}
+                    rowKey={row => row.id}
+                    columns={[
+                      { header: 'Client', render: row => row.workspaces?.name ?? '—' },
+                      { header: 'Check', render: row => row.check_type },
+                      { header: 'Opened', render: row => timeAgo(row.opened_at) },
+                      { header: 'Auto-repair tried', render: row => (row.auto_repair_attempted ? 'Yes' : 'No') },
+                    ]}
+                  />
+                </section>
+                <section className="card">
+                  <Title text="Recent Checks" />
+                  <SimpleTable
+                    label="Recent health checks"
+                    loaded={healthLoaded}
+                    emptyMessage="No health checks have run yet."
+                    rows={healthChecks}
+                    rowKey={row => row.id}
+                    columns={[
+                      { header: 'Client', render: row => row.workspaces?.name ?? '—' },
+                      { header: 'Check', render: row => row.check_type },
+                      { header: 'Result', render: row => row.status },
+                      { header: 'Checked', render: row => timeAgo(row.checked_at) },
+                    ]}
+                  />
+                </section>
+              </>
+            ) : active === 'Reports' ? (
+              <div className="stats">
+                <Stat icon={<Users aria-hidden="true" />} tone="violet" label="Clients" value={String(clientRows.length)} change="" />
+                <Stat
+                  icon={<Check aria-hidden="true" />}
+                  tone="green"
+                  label="Pending Approvals"
+                  value={String(approvals.length)}
+                  change=""
+                />
+              </div>
+            ) : active === 'Settings' ? (
+              <section className="card">
+                <Title text="Account" />
+                <p style={{ padding: '4px 0 16px', opacity: 0.8 }}>
+                  Signed in as <strong>{userEmail ?? '…'}</strong>
+                </p>
+                <button type="button" className="outline" onClick={signOut}>
+                  Sign out
+                </button>
+              </section>
             ) : active !== 'Overview' ? (
               <div className="module">
                 <div className="module-icon" aria-hidden="true">
@@ -542,44 +830,21 @@ export default function Dashboard() {
                 <div className="two-col lower">
                   {clientWorkspacesCard}
                   <section className="card">
-                    <Title
-                      text="Approval Queue"
-                      right={
-                        <button type="button" className="link" onClick={() => notify('Approval queue opened')}>
-                          View all <ArrowUpRight size={15} aria-hidden="true" />
-                        </button>
-                      }
-                    />
-                    <Approval
-                      title="Meta campaign budget change"
-                      client="Nova Clinic"
-                      age="2 hours ago"
-                      kind="ads"
-                      done={approved.includes(1)}
-                      onApprove={() => {
-                        setApproved([...approved, 1]);
-                        notify('Approval completed and logged');
-                      }}
-                    />
-                    <Approval
-                      title="LinkedIn post"
-                      client="Bright Homes"
-                      age="4 hours ago"
-                      kind="post"
-                      done={approved.includes(2)}
-                      onApprove={() => notify('Review opened for Admin')}
-                    />
-                    <Approval
-                      title="Domain DNS update"
-                      client="Urban Eats"
-                      age="6 hours ago"
-                      kind="domain"
-                      done={approved.includes(3)}
-                      onApprove={() => {
-                        setApproved([...approved, 3]);
-                        notify('Approval completed and logged');
-                      }}
-                    />
+                    <Title text="Approval Queue" />
+                    {approvalsLoaded && approvals.length === 0 && (
+                      <p style={{ padding: '8px 0', opacity: 0.7 }}>No pending approvals.</p>
+                    )}
+                    {approvals.map(item => (
+                      <Approval
+                        key={item.id}
+                        title={item.title}
+                        client={item.workspaces?.name ?? 'Unknown client'}
+                        age={timeAgo(item.created_at)}
+                        kind={approvalKind(item.module)}
+                        done={decidingApprovalId === item.id}
+                        onApprove={() => decideApproval(item.id, 'approved')}
+                      />
+                    ))}
                   </section>
                 </div>
               </>

@@ -1,6 +1,52 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { Check, FileText, Globe2, Megaphone, MoreHorizontal } from 'lucide-react';
 
+/** A minimal real-data table, reusing the same table-grid/client-row styling as the Clients
+ * table so Paid Ads, Leads, Domains and AI Monitor don't need their own CSS. */
+export function SimpleTable<T>({
+  label,
+  columns,
+  rows,
+  rowKey,
+  loaded,
+  emptyMessage,
+}: {
+  label: string;
+  columns: ReadonlyArray<{ header: string; render: (row: T) => ReactNode }>;
+  rows: T[];
+  rowKey: (row: T) => string;
+  loaded: boolean;
+  emptyMessage: string;
+}) {
+  return (
+    <div className="table-scroll" role="region" aria-label={label} tabIndex={0}>
+      <div className="table-grid" role="table" aria-label={label}>
+        <div className="table-head" role="row">
+          {columns.map(c => (
+            <span role="columnheader" key={c.header}>
+              {c.header}
+            </span>
+          ))}
+        </div>
+        {loaded && rows.length === 0 && (
+          <div className="client-row" role="row">
+            <span role="cell">{emptyMessage}</span>
+          </div>
+        )}
+        {rows.map(row => (
+          <div className="client-row" key={rowKey(row)} role="row">
+            {columns.map(c => (
+              <div role="cell" key={c.header}>
+                {c.render(row)}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function Stat({
   icon,
   tone,
