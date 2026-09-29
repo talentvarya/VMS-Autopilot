@@ -10,7 +10,7 @@ import { createClient } from '@/lib/supabase/server';
 import { generateCaptionText } from '@/lib/agents/social/agent';
 import { AiUsageCapExceededError } from '@/lib/ai/usage-cap';
 import { createSupabaseAgentStore, ensureAiUsageCapDefaults } from '@/lib/agents/supabase-store';
-import { resolveRole } from '@/lib/permissions';
+import { resolveWorkspaceRole } from '@/lib/agents/resolve-principal';
 import { NETWORKS, type Network } from '@/lib/social/types';
 
 export async function POST(request: Request) {
@@ -26,21 +26,13 @@ export async function POST(request: Request) {
   if (!workspaceId || !network) return NextResponse.json({ error: 'a client and a network are required' }, { status: 400 });
   if (!topic) return NextResponse.json({ error: 'a topic is required' }, { status: 400 });
 
-  // Resolve the caller's real role for this (client) workspace, the same way the database's
-  // own role_of_user() does: a direct membership, or reaching down from their agency.
-  const { data: workspace } = await supabase.from('workspaces').select('id, kind, parent_workspace_id').eq('id', workspaceId).maybeSingle();
-  if (!workspace) return NextResponse.json({ error: 'that client was not found' }, { status: 404 });
-  const { data: memberships } = await supabase.from('workspace_members').select('workspace_id, role').eq('user_id', user.id);
-  const role = resolveRole(
-    (memberships ?? []).map(m => ({ workspaceId: m.workspace_id, role: m.role })),
-    { id: workspace.id, kind: workspace.kind, parentId: workspace.parent_workspace_id },
-  );
-  if (!role) return NextResponse.json({ error: 'you do not have access to that client' }, { status: 403 });
+  const resolved = await resolveWorkspaceRole(supabase, user.id, workspaceId);
+  if (!resolved) return NextResponse.json({ error: 'you do not have access to that client' }, { status: 403 });
 
   try {
     await ensureAiUsageCapDefaults(workspaceId);
-    const store = createSupabaseAgentStore();
-    const text = await generateCaptionText(store, { id: user.id, role, grants: [] }, workspaceId, network, topic, callToAction);
+    const store = createSupabaseAgentStore(supabase);
+    const text = await generateCaptionText(store, { id: user.id, role: resolved.role, grants: [] }, workspaceId, network, topic, callToAction);
     return NextResponse.json({ text });
   } catch (err) {
     if (err instanceof AiUsageCapExceededError) return NextResponse.json({ error: err.message }, { status: 429 });

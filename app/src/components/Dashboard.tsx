@@ -49,6 +49,7 @@ type CampaignRow = {
 };
 type LeadRow = {
   id: string;
+  workspace_id: string;
   source: string;
   name: string | null;
   contact: string | null;
@@ -446,6 +447,111 @@ export default function Dashboard() {
     }
   };
 
+  const qualifyLead = async (leadId: string, workspaceId: string, status: string) => {
+    try {
+      const res = await fetch('/api/agents/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task: 'qualify_lead', workspaceId, leadId, status }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        notify(body.error || 'Could not update that lead');
+        return;
+      }
+      setLeads(rows => rows.map(row => (row.id === leadId ? { ...row, status } : row)));
+      notify('Lead marked ' + status);
+    } catch {
+      notify('Could not update that lead — check your connection');
+    }
+  };
+
+  const draftFollowUpForLead = async (leadId: string, workspaceId: string, leadName: string) => {
+    const context = window.prompt(`What should the AI mention in the follow-up to ${leadName}? (optional)`) || undefined;
+    try {
+      const res = await fetch('/api/agents/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task: 'draft_follow_up', workspaceId, leadId, context }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        notify(body.error || 'Could not draft a follow-up');
+        return;
+      }
+      notify('Follow-up drafted: ' + (body.output?.draftedBody ?? ''));
+    } catch {
+      notify('Could not draft a follow-up — check your connection');
+    }
+  };
+
+  const submitCampaignForReview = async (campaignId: string) => {
+    try {
+      const res = await fetch(`/api/ad-campaigns/${campaignId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'in_review' }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        notify(body.error || 'Could not submit that campaign');
+        return;
+      }
+      setCampaigns(rows => rows.map(row => (row.id === campaignId ? { ...row, status: 'in_review' } : row)));
+      notify('Campaign submitted for review');
+    } catch {
+      notify('Could not submit that campaign — check your connection');
+    }
+  };
+
+  const submitWebsitePlanForReview = async (projectId: string) => {
+    try {
+      const res = await fetch(`/api/website-projects/${projectId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'in_review' }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        notify(body.error || 'Could not submit that project');
+        return;
+      }
+      setWebsiteProjects(rows => rows.map(row => (row.id === projectId ? { ...row, status: 'in_review' } : row)));
+      notify('Project submitted for review');
+    } catch {
+      notify('Could not submit that project — check your connection');
+    }
+  };
+
+  const [domainSuggestions, setDomainSuggestions] = useState<{ name: string; available: boolean }[]>([]);
+  const researchDomainNames = async () => {
+    const businessName = window.prompt('Business name?')?.trim();
+    if (!businessName) return;
+    try {
+      const namesRes = await fetch('/api/agents/website', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task: 'research_domain_names', businessName }),
+      });
+      const namesBody = await namesRes.json();
+      if (!namesRes.ok) {
+        notify(namesBody.error || 'Could not research domain names');
+        return;
+      }
+      const candidates = (namesBody.output?.suggestions as string[]) ?? [];
+      const availRes = await fetch('/api/agents/website', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task: 'check_domain_availability', candidates }),
+      });
+      const availBody = await availRes.json();
+      const availability = (availBody.output?.availability as Record<string, boolean>) ?? {};
+      setDomainSuggestions(candidates.map(name => ({ name, available: availability[name] ?? true })));
+    } catch {
+      notify('Could not research domain names — check your connection');
+    }
+  };
+
   // AI Monitor needs two lists (open incidents + recent checks) from one endpoint, so it
   // can't use the single-list useLazyList hook.
   const [healthIncidents, setHealthIncidents] = useState<HealthIncidentRow[]>([]);
@@ -818,6 +924,15 @@ export default function Dashboard() {
                         row.budget_amount != null ? `${row.budget_amount} / ${row.budget_period ?? 'total'}` : '—',
                     },
                     { header: 'Created', render: row => timeAgo(row.created_at) },
+                    {
+                      header: '',
+                      render: row =>
+                        row.status === 'draft' ? (
+                          <button type="button" className="outline" onClick={() => submitCampaignForReview(row.id)}>
+                            Submit for review
+                          </button>
+                        ) : null,
+                    },
                   ]}
                 />
               </section>
@@ -842,36 +957,86 @@ export default function Dashboard() {
                     { header: 'Name', render: row => row.name ?? 'Unnamed lead' },
                     { header: 'Contact', render: row => row.contact ?? '—' },
                     { header: 'Source', render: row => row.source },
-                    { header: 'Status', render: row => row.status },
+                    {
+                      header: 'Status',
+                      render: row => (
+                        <select
+                          value={row.status}
+                          onChange={e => qualifyLead(row.id, row.workspace_id, e.target.value)}
+                          aria-label={`Status for ${row.name ?? 'this lead'}`}
+                        >
+                          {['new', 'contacted', 'qualified', 'converted', 'lost'].map(s => (
+                            <option key={s} value={s}>{s}</option>
+                          ))}
+                        </select>
+                      ),
+                    },
                     { header: 'Created', render: row => timeAgo(row.created_at) },
+                    {
+                      header: '',
+                      render: row => (
+                        <button type="button" className="outline" onClick={() => draftFollowUpForLead(row.id, row.workspace_id, row.name ?? 'this lead')}>
+                          AI follow-up
+                        </button>
+                      ),
+                    },
                   ]}
                 />
               </section>
             ) : active === 'Domains' ? (
-              <section className="card">
-                <Title
-                  text="Website Projects"
-                  right={
-                    <button type="button" className="link" onClick={addWebsiteProject}>
-                      <Plus size={15} aria-hidden="true" /> Add project
-                    </button>
-                  }
-                />
-                <SimpleTable
-                  label="Website projects"
-                  loaded={websiteProjectsLoaded}
-                  emptyMessage="No website projects yet."
-                  rows={websiteProjects}
-                  rowKey={row => row.id}
-                  columns={[
-                    { header: 'Client', render: row => row.workspaces?.name ?? '—' },
-                    { header: 'Title', render: row => row.title },
-                    { header: 'Provider', render: row => row.provider },
-                    { header: 'Status', render: row => row.status },
-                    { header: 'Created', render: row => timeAgo(row.created_at) },
-                  ]}
-                />
-              </section>
+              <>
+                <section className="card">
+                  <Title
+                    text="Website Projects"
+                    right={
+                      <button type="button" className="link" onClick={addWebsiteProject}>
+                        <Plus size={15} aria-hidden="true" /> Add project
+                      </button>
+                    }
+                  />
+                  <SimpleTable
+                    label="Website projects"
+                    loaded={websiteProjectsLoaded}
+                    emptyMessage="No website projects yet."
+                    rows={websiteProjects}
+                    rowKey={row => row.id}
+                    columns={[
+                      { header: 'Client', render: row => row.workspaces?.name ?? '—' },
+                      { header: 'Title', render: row => row.title },
+                      { header: 'Provider', render: row => row.provider },
+                      { header: 'Status', render: row => row.status },
+                      { header: 'Created', render: row => timeAgo(row.created_at) },
+                      {
+                        header: '',
+                        render: row =>
+                          row.status === 'draft' ? (
+                            <button type="button" className="outline" onClick={() => submitWebsitePlanForReview(row.id)}>
+                              Submit for review
+                            </button>
+                          ) : null,
+                      },
+                    ]}
+                  />
+                </section>
+                <section className="card">
+                  <Title text="Domain Name Ideas (AI)" />
+                  <p style={{ padding: '4px 0 12px', opacity: 0.7 }}>
+                    Type a business name and get available domain suggestions — read-only, checks nothing live.
+                  </p>
+                  <button type="button" className="outline" onClick={researchDomainNames}>
+                    <Sparkles size={15} aria-hidden="true" /> Suggest domain names
+                  </button>
+                  {domainSuggestions.length > 0 && (
+                    <ul style={{ marginTop: 12 }}>
+                      {domainSuggestions.map(s => (
+                        <li key={s.name}>
+                          {s.name} — {s.available ? 'looks available' : 'likely taken'}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              </>
             ) : active === 'AI Monitor' ? (
               <>
                 <section className="card">
