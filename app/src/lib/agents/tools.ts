@@ -178,6 +178,93 @@ export const TOOLS: Record<string, ToolDefinition> = {
     description: 'Moves a failed post back to "approved" only - never any further toward being sent. Uses the SAME sensitive action a human\'s own publish already needs.',
     permission: { module: 'social', action: 'publish_execute' },
   },
+
+  /**
+   * Sub-phase E adds sixteen tools across four agents, all reusing existing actions.
+   * paid_ads is the one module where Phase 1 made BOTH edit and publish_execute sensitive
+   * ("budget change / pause, launch") - update_campaign_budget and launch_campaign both
+   * reflect that. leads_crm is the lightest-touch module in the system (nothing here is
+   * sensitive except delete, which has no tool). A Client's ceiling for `website` is 'view'
+   * only - draft_website_plan can never be attempted by a Client, however it is granted.
+   * `launch_campaign` and `propose_domain_connection` have no apply() anywhere in this
+   * project - no live ad account or registrar integration exists, so proposing either only
+   * ever proves the permission/approval path.
+   */
+  intake_business_profile: {
+    name: 'intake_business_profile',
+    description: 'Records the structured business/product intake for audience research. No permission check - nothing is written.',
+  },
+  research_audience_signals: {
+    name: 'research_audience_signals',
+    description: 'Sandbox, business-agnostic research into customer intent and audience signals. No permission check - nothing is written.',
+  },
+  create_audience_hypotheses: {
+    name: 'create_audience_hypotheses',
+    description: 'Produces audience personas and core/lookalike/retargeting/exclusion segments. No permission check - nothing is written.',
+  },
+  finalize_audience_brief: {
+    name: 'finalize_audience_brief',
+    description: 'Writes a real ad_audience_briefs row and locks it - the approved input for campaign planning only. Never launches ads, changes a budget or touches a live account.',
+    permission: { module: 'paid_ads', action: 'create' },
+  },
+  draft_campaign: {
+    name: 'draft_campaign',
+    description: 'Writes a real ad_campaigns row (+ creatives) in "draft" status. Needs an explicit grant - paid_ads:create is never a Client default.',
+    permission: { module: 'paid_ads', action: 'create' },
+  },
+  submit_campaign_for_review: {
+    name: 'submit_campaign_for_review',
+    description: 'Moves a drafted campaign to "in_review" (pending approval).',
+    permission: { module: 'paid_ads', action: 'create' },
+  },
+  update_campaign_budget: {
+    name: 'update_campaign_budget',
+    description: 'Changes a campaign\'s sandbox budget fields only - never spends anything real. Sensitive, per PRD 5.6.',
+    permission: { module: 'paid_ads', action: 'publish_execute' },
+  },
+  launch_campaign: {
+    name: 'launch_campaign',
+    description: 'Proposes launching a campaign. No real ad account exists, so this has no effect even when allowed - it only proves the permission/approval path.',
+    permission: { module: 'paid_ads', action: 'publish_execute' },
+  },
+  capture_lead: {
+    name: 'capture_lead',
+    description: 'Writes a real leads row (or, from a social interaction, creates/updates the one lead already linked to it - never a duplicate). Never sensitive.',
+    permission: { module: 'leads_crm', action: 'create' },
+  },
+  qualify_lead: {
+    name: 'qualify_lead',
+    description: 'Changes a lead\'s status (new/contacted/qualified/converted/lost). Never sensitive.',
+    permission: { module: 'leads_crm', action: 'edit' },
+  },
+  draft_follow_up: {
+    name: 'draft_follow_up',
+    description: 'Writes a drafted follow-up message to lead_activities. Never sent - there is no send tool anywhere in this project.',
+    permission: { module: 'leads_crm', action: 'create' },
+  },
+  draft_website_plan: {
+    name: 'draft_website_plan',
+    description: 'Writes a real website_projects row in "draft" status. A Client can never attempt this - their ceiling for `website` is view-only.',
+    permission: { module: 'website', action: 'create' },
+  },
+  submit_website_plan_for_review: {
+    name: 'submit_website_plan_for_review',
+    description: 'Moves a drafted website plan to "in_review" (pending approval).',
+    permission: { module: 'website', action: 'create' },
+  },
+  research_domain_names: {
+    name: 'research_domain_names',
+    description: 'Sandbox name suggestions. No permission check - nothing is written, and no real registrar is ever contacted.',
+  },
+  check_domain_availability: {
+    name: 'check_domain_availability',
+    description: 'Sandbox heuristic against a small fixture "taken" list. No permission check, no real WHOIS/registrar call ever.',
+  },
+  propose_domain_connection: {
+    name: 'propose_domain_connection',
+    description: 'Proposes connecting a domain. No registrar integration exists, so this has no effect even when allowed - it only proves the permission/approval path.',
+    permission: { module: 'domains', action: 'create' },
+  },
 };
 
 export function toolDefinition(name: string): ToolDefinition | undefined {

@@ -27,13 +27,17 @@
  */
 
 import { decide } from '@/lib/permissions';
+import { runAdsAudienceAgent, type AdsAudienceAgentInput } from './ads-audience/agent';
 import { runAnalyticsAgent } from './analytics/agent';
 import { runContentAgent, type ContentAgentInput } from './content/agent';
 import { runEchoAgent, type EchoAgentInput } from './echo-agent';
+import { runLeadsAgent } from './leads/agent';
 import { runMonitoringAgent, type MonitoringAgentInput } from './monitoring/agent';
+import { runPaidAdsAgent, type PaidAdsAgentInput } from './paid-ads/agent';
 import { runSeoGeoAgent, type SeoGeoAgentInput } from './seo/agent';
 import { runSocialMediaSuperAgent, type SocialAgentInput } from './social/agent';
 import { toolDefinition } from './tools';
+import { runWebsiteAgent, type WebsiteAgentInput } from './website/agent';
 import type {
   AgentLogicResult,
   AgentStore,
@@ -166,6 +170,12 @@ export async function runAgent(store: AgentStore, principal: Principal, request:
  * exactly the expected, documented state for 'analytics_reporting_agent' and 'lead_crm_agent'
  * today. The depth limit exists only to stop a future misconfiguration (two agents handing
  * off to each other) from recursing forever; it is not expected to ever be hit in practice.
+ *
+ * `workspaceId` is always injected into the target's own input, never assumed to already be
+ * there: a handoff always runs in the SAME workspace as the run that proposed it, but not
+ * every handoff payload includes that field explicitly (Sub-phase B's `request_analytics` and
+ * `propose_lead_handoff` predate that convention). For a payload that already sets it (every
+ * handoff since Sub-phase C), this is a harmless, same-value overwrite.
  */
 async function resolveHandoffs(
   store: AgentStore,
@@ -184,7 +194,7 @@ async function resolveHandoffs(
       const outcome = await runAgent(
         store,
         principal,
-        { workspaceId, agentKey: handoff.toAgentKey, triggeredByKind: 'agent', input: handoff.payload },
+        { workspaceId, agentKey: handoff.toAgentKey, triggeredByKind: 'agent', input: { ...handoff.payload, workspaceId } },
         depth + 1,
       );
       results.push(outcome.ok ? { ...handoff, resolved: true, run: outcome.run } : { ...handoff, resolved: false, reason: outcome.reason });
@@ -234,5 +244,9 @@ async function invokeAgentLogic(
   if (agentKey === 'content_agent') return runContentAgent(input as unknown as ContentAgentInput, store, principal);
   if (agentKey === 'analytics_reporting_agent') return runAnalyticsAgent(input);
   if (agentKey === 'monitoring_auto_repair_agent') return runMonitoringAgent(input as unknown as MonitoringAgentInput, store, principal);
+  if (agentKey === 'ads_audience_agent') return runAdsAudienceAgent(input as unknown as AdsAudienceAgentInput, store, principal);
+  if (agentKey === 'paid_ads_agent') return runPaidAdsAgent(input as unknown as PaidAdsAgentInput, store, principal);
+  if (agentKey === 'lead_crm_agent') return runLeadsAgent(input, store, principal);
+  if (agentKey === 'website_domain_agent') return runWebsiteAgent(input as unknown as WebsiteAgentInput, store, principal);
   throw new Error(`no logic implemented yet for agent "${agentKey}"`);
 }

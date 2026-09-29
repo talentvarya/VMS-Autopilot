@@ -168,6 +168,124 @@ export interface RepairStaleInput {
   olderThanMinutes?: number;
 }
 
+export const AD_PLATFORMS = ['meta', 'google'] as const;
+export type AdPlatform = (typeof AD_PLATFORMS)[number];
+
+export interface BusinessProfile {
+  name: string;
+  industry: string;
+  product: string;
+  pricePoint?: string;
+  problem?: string;
+  location?: string;
+}
+
+export interface AudienceHypothesis {
+  personaName: string;
+  painPoint: string;
+  signals: string[];
+  demographics?: string;
+}
+
+export const AUDIENCE_SEGMENT_TYPES = ['core', 'lookalike', 'retargeting', 'exclusion'] as const;
+export type AudienceSegmentType = (typeof AUDIENCE_SEGMENT_TYPES)[number];
+
+export interface AudienceSegment {
+  segmentType: AudienceSegmentType;
+  description: string;
+}
+
+export interface ConversionSignals {
+  qualifiedLeads?: number;
+  purchases?: number;
+  topSource?: string;
+}
+
+export interface FinalizeAudienceBriefInput {
+  workspaceId: string;
+  businessProfile: BusinessProfile;
+  platform: AdPlatform;
+  hypotheses: AudienceHypothesis[];
+  segments: AudienceSegment[];
+  recommendedObjective: string;
+  recommendedOffer: string;
+  conversionSignals?: ConversionSignals;
+}
+
+export interface AdCreativeInput {
+  headline: string;
+  body: string;
+  callToAction?: string;
+  imageRef?: string | null;
+}
+
+export interface DraftCampaignInput {
+  workspaceId: string;
+  audienceBriefId?: string | null;
+  platform: AdPlatform;
+  objective: string;
+  name: string;
+  budgetAmount?: number;
+  budgetPeriod?: 'daily' | 'lifetime';
+  creatives?: AdCreativeInput[];
+}
+
+export interface UpdateCampaignBudgetInput {
+  workspaceId: string;
+  campaignId: string;
+  budgetAmount: number;
+  budgetPeriod: 'daily' | 'lifetime';
+}
+
+export const LEAD_SOURCES = ['form', 'whatsapp', 'social_dm', 'manual'] as const;
+export type LeadSource = (typeof LEAD_SOURCES)[number];
+
+export const LEAD_STATUSES = ['new', 'contacted', 'qualified', 'converted', 'lost'] as const;
+export type LeadStatus = (typeof LEAD_STATUSES)[number];
+
+export interface CaptureLeadInput {
+  workspaceId: string;
+  source: LeadSource;
+  name?: string | null;
+  contact?: string | null;
+  notes?: string | null;
+  sourceInteractionId?: string | null;
+}
+
+export interface CaptureLeadFromInteractionInput {
+  workspaceId: string;
+  interactionId: string;
+  extractedContact?: string;
+  confidence?: number;
+}
+
+export interface QualifyLeadInput {
+  workspaceId: string;
+  leadId: string;
+  status: LeadStatus;
+}
+
+export interface DraftFollowUpInput {
+  workspaceId: string;
+  leadId: string;
+  body: string;
+}
+
+export const WEBSITE_PROVIDERS = ['vercel', 'lovable', 'emergent', 'google_ai_studio', 'other'] as const;
+export type WebsiteProvider = (typeof WEBSITE_PROVIDERS)[number];
+
+export interface WebsitePage {
+  name: string;
+  sections: string[];
+}
+
+export interface DraftWebsitePlanInput {
+  workspaceId: string;
+  provider: WebsiteProvider;
+  title: string;
+  pages: WebsitePage[];
+}
+
 /**
  * What the Orchestrator needs from the outside world. Sub-phase A tested it against a small
  * in-memory fake using only the first three methods; a real Supabase service-role client is a
@@ -209,4 +327,17 @@ export interface AgentStore {
   repairStaleSocialPublishing?(principal: Principal, input: RepairStaleInput): Promise<{ failedCount: number }>;
   /** Moves a failed post back to 'approved' ONLY - never any further toward being sent. */
   resumeFailedSocialPost?(principal: Principal, postId: string): Promise<void>;
+  /** Inserts, then immediately locks, a brief - the trigger always inserts as 'draft' first. */
+  finalizeAudienceBrief?(principal: Principal, input: FinalizeAudienceBriefInput): Promise<{ id: string; version: number }>;
+  draftCampaign?(principal: Principal, input: DraftCampaignInput): Promise<{ id: string }>;
+  submitCampaignForReview?(principal: Principal, campaignId: string): Promise<void>;
+  /** Only ever called once decide() has already confirmed 'allow' on paid_ads:publish_execute. */
+  updateCampaignBudget?(principal: Principal, input: UpdateCampaignBudgetInput): Promise<void>;
+  captureLead?(principal: Principal, input: CaptureLeadInput): Promise<{ id: string }>;
+  /** Idempotent: the SAME interactionId always resolves to the SAME lead (create-or-update). */
+  captureLeadFromInteraction?(principal: Principal, input: CaptureLeadFromInteractionInput): Promise<{ id: string; created: boolean }>;
+  qualifyLead?(principal: Principal, input: QualifyLeadInput): Promise<void>;
+  draftFollowUp?(principal: Principal, input: DraftFollowUpInput): Promise<{ id: string }>;
+  draftWebsitePlan?(principal: Principal, input: DraftWebsitePlanInput): Promise<{ id: string }>;
+  submitWebsitePlanForReview?(principal: Principal, projectId: string): Promise<void>;
 }
