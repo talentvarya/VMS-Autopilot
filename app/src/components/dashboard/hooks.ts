@@ -1,14 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 
 /** Fetches `url` (expects `{ rows: T[] }`) once, the first time `active` matches `tab` -
- * shared by every nav tab whose data is just a real read-only list from Supabase. */
+ * shared by every nav tab whose data is just a real read-only list from Supabase. The setter
+ * lets a caller append a newly-created row locally instead of refetching the whole list. */
 export function useLazyList<T>(
   active: string,
   tab: string,
   url: string,
   notify: (text: string) => void,
   label: string,
-): [T[], boolean] {
+): [T[], boolean, Dispatch<SetStateAction<T[]>>] {
   const [rows, setRows] = useState<T[]>([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -37,5 +38,5 @@ export function useLazyList<T>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, tab, url, loaded]);
 
-  return [rows, loaded];
+  return [rows, loaded, setRows];
 }

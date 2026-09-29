@@ -353,9 +353,98 @@ export default function Dashboard() {
     return () => { cancelled = true; };
   }, []);
 
-  const [campaigns, campaignsLoaded] = useLazyList<CampaignRow>(active, 'Paid Ads', '/api/ad-campaigns', notify, 'campaigns');
-  const [leads, leadsLoaded] = useLazyList<LeadRow>(active, 'Leads & CRM', '/api/leads', notify, 'leads');
-  const [websiteProjects, websiteProjectsLoaded] = useLazyList<WebsiteProjectRow>(active, 'Domains', '/api/website-projects', notify, 'domain projects');
+  const [campaigns, campaignsLoaded, setCampaigns] = useLazyList<CampaignRow>(active, 'Paid Ads', '/api/ad-campaigns', notify, 'campaigns');
+  const [leads, leadsLoaded, setLeads] = useLazyList<LeadRow>(active, 'Leads & CRM', '/api/leads', notify, 'leads');
+  const [websiteProjects, websiteProjectsLoaded, setWebsiteProjects] = useLazyList<WebsiteProjectRow>(active, 'Domains', '/api/website-projects', notify, 'domain projects');
+
+  // Every "Add X" prompt below asks for a client by name, then resolves it against the real
+  // client list already loaded for the Clients tab - avoids building a picker component for
+  // what is, today, always a short list.
+  const findClientByName = (): { id: string; name: string } | null => {
+    if (clientRows.length === 0) {
+      notify('Add a client first');
+      return null;
+    }
+    const typed = window.prompt(`Which client? (${clientRows.map(c => c.name).join(', ')})`)?.trim().toLowerCase();
+    if (!typed) return null;
+    const match = clientRows.find(c => c.name.toLowerCase() === typed);
+    if (!match) {
+      notify('No client matches that name');
+      return null;
+    }
+    return { id: match.id, name: match.name };
+  };
+
+  const addLead = async () => {
+    const client = findClientByName();
+    if (!client) return;
+    const name = window.prompt('Lead name (or leave blank if you only have contact info)')?.trim() || null;
+    const contact = window.prompt('Contact (phone, email, @handle)')?.trim() || null;
+    if (!name && !contact) return;
+    try {
+      const res = await fetch('/api/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspace_id: client.id, name, contact }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        notify(body.error || 'Could not add lead');
+        return;
+      }
+      setLeads(rows => [body.row as LeadRow, ...rows]);
+      notify('Lead added for ' + client.name);
+    } catch {
+      notify('Could not add lead — check your connection');
+    }
+  };
+
+  const addCampaign = async () => {
+    const client = findClientByName();
+    if (!client) return;
+    const name = window.prompt('Campaign name?')?.trim();
+    if (!name) return;
+    const objective = window.prompt('Objective? (e.g. Leads, Awareness, Traffic)')?.trim() || 'Awareness';
+    try {
+      const res = await fetch('/api/ad-campaigns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspace_id: client.id, name, objective }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        notify(body.error || 'Could not add campaign');
+        return;
+      }
+      setCampaigns(rows => [body.row as CampaignRow, ...rows]);
+      notify('Draft campaign created for ' + client.name);
+    } catch {
+      notify('Could not add campaign — check your connection');
+    }
+  };
+
+  const addWebsiteProject = async () => {
+    const client = findClientByName();
+    if (!client) return;
+    const title = window.prompt('Project title?')?.trim();
+    if (!title) return;
+    try {
+      const res = await fetch('/api/website-projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspace_id: client.id, title }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        notify(body.error || 'Could not add project');
+        return;
+      }
+      setWebsiteProjects(rows => [body.row as WebsiteProjectRow, ...rows]);
+      notify('Project added for ' + client.name);
+    } catch {
+      notify('Could not add project — check your connection');
+    }
+  };
 
   // AI Monitor needs two lists (open incidents + recent checks) from one endpoint, so it
   // can't use the single-list useLazyList hook.
@@ -704,7 +793,14 @@ export default function Dashboard() {
               clientWorkspacesCard
             ) : active === 'Paid Ads' ? (
               <section className="card">
-                <Title text="Ad Campaigns" />
+                <Title
+                  text="Ad Campaigns"
+                  right={
+                    <button type="button" className="link" onClick={addCampaign}>
+                      <Plus size={15} aria-hidden="true" /> Add campaign
+                    </button>
+                  }
+                />
                 <SimpleTable
                   label="Ad campaigns"
                   loaded={campaignsLoaded}
@@ -727,7 +823,14 @@ export default function Dashboard() {
               </section>
             ) : active === 'Leads & CRM' ? (
               <section className="card">
-                <Title text="Leads" />
+                <Title
+                  text="Leads"
+                  right={
+                    <button type="button" className="link" onClick={addLead}>
+                      <Plus size={15} aria-hidden="true" /> Add lead
+                    </button>
+                  }
+                />
                 <SimpleTable
                   label="Leads"
                   loaded={leadsLoaded}
@@ -746,7 +849,14 @@ export default function Dashboard() {
               </section>
             ) : active === 'Domains' ? (
               <section className="card">
-                <Title text="Website Projects" />
+                <Title
+                  text="Website Projects"
+                  right={
+                    <button type="button" className="link" onClick={addWebsiteProject}>
+                      <Plus size={15} aria-hidden="true" /> Add project
+                    </button>
+                  }
+                />
                 <SimpleTable
                   label="Website projects"
                   loaded={websiteProjectsLoaded}

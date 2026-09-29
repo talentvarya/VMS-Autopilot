@@ -20,3 +20,30 @@ export async function GET() {
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   return NextResponse.json({ rows: data });
 }
+
+const AD_PLATFORMS = ['meta', 'google'] as const;
+
+export async function POST(request: Request) {
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) return NextResponse.json({ error: 'not signed in' }, { status: 401 });
+
+  const body = await request.json().catch(() => null);
+  const workspaceId = typeof body?.workspace_id === 'string' ? body.workspace_id : '';
+  const name = typeof body?.name === 'string' ? body.name.trim() : '';
+  const objective = typeof body?.objective === 'string' && body.objective.trim() ? body.objective.trim() : 'Awareness';
+  const platform = AD_PLATFORMS.includes(body?.platform) ? body.platform : 'meta';
+  if (!workspaceId) return NextResponse.json({ error: 'a client is required' }, { status: 400 });
+  if (!name) return NextResponse.json({ error: 'a campaign name is required' }, { status: 400 });
+
+  // No Meta/Google connection exists anywhere in this app - every campaign is created as
+  // 'draft' (the table's own default) and never spends anything or reaches a real platform.
+  const { data, error } = await supabase
+    .from('ad_campaigns')
+    .insert({ workspace_id: workspaceId, platform, objective, name })
+    .select('id, workspace_id, platform, objective, name, status, budget_amount, budget_period, created_at, workspaces(name)')
+    .single();
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  return NextResponse.json({ row: data }, { status: 201 });
+}
