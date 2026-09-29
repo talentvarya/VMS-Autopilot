@@ -7,7 +7,7 @@
  * (scripted, deterministic) agent that exists so far.
  */
 
-import type { Action, Grant, Module, Role } from '@/lib/permissions';
+import type { Action, ApprovalStatus, Grant, Module, Role } from '@/lib/permissions';
 import type { Network } from '@/lib/social/types';
 import type { BrandVoiceProfile } from './social/types';
 
@@ -109,6 +109,23 @@ export interface ApprovalRequestInput {
   action: string;
   title: string;
   details: Record<string, unknown>;
+}
+
+/**
+ * What a resolved approval request looks like once read back (Phase F.1). `details` carries
+ * whatever runAgent() stored at creation time - for a tool-call-driven request that includes
+ * `toolName` and `toolInput`, which is exactly what approvals.ts's resume mechanism reads to
+ * know what to re-execute once an Admin approves it.
+ */
+export interface ApprovalRequestRecord {
+  id: string;
+  workspaceId: string;
+  requestedBy: string;
+  module: string;
+  action: string;
+  title: string;
+  details: Record<string, unknown>;
+  status: ApprovalStatus;
 }
 
 export interface CreateSocialPostInput {
@@ -340,4 +357,14 @@ export interface AgentStore {
   draftFollowUp?(principal: Principal, input: DraftFollowUpInput): Promise<{ id: string }>;
   draftWebsitePlan?(principal: Principal, input: DraftWebsitePlanInput): Promise<{ id: string }>;
   submitWebsitePlanForReview?(principal: Principal, projectId: string): Promise<void>;
+  /** Phase F.1: reads back one approval request - needed to resolve/resume it. */
+  getApprovalRequest?(workspaceId: string, approvalId: string): Promise<ApprovalRequestRecord | null>;
+  /**
+   * Phase F.1: records an Admin's decision on a pending approval request. A real implementation
+   * writes straight to `approval_requests` (status/decided_by/decision_note), where the
+   * database's own trigger independently re-enforces that only an Admin may decide - this
+   * method existing does not weaken that; approvals.ts's resolveApproval() checks the same rule
+   * in TypeScript first purely so a bad call fails with a clear reason before ever reaching SQL.
+   */
+  decideApprovalRequest?(approvalId: string, decidedBy: string, status: 'approved' | 'rejected', note?: string): Promise<void>;
 }

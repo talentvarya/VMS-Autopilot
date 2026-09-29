@@ -2,6 +2,7 @@ import type {
   AgentDefinition,
   AgentStore,
   ApprovalRequestInput,
+  ApprovalRequestRecord,
   CaptureLeadFromInteractionInput,
   CaptureLeadInput,
   DraftCampaignInput,
@@ -12,7 +13,7 @@ import type {
   QualifyLeadInput,
   UpdateCampaignBudgetInput,
 } from '@/lib/agents/types';
-import { ID, asUser, rows, type Db } from './harness';
+import { ID, asOwner, asUser, rows, type Db } from './harness';
 
 const AGENCY_OF: Record<string, string> = { [ID.nova]: ID.acme, [ID.bright]: ID.acme };
 
@@ -35,9 +36,47 @@ export class AdsLeadsFixtureStore implements AgentStore {
   newId() {
     return `run-${++this.n}`;
   }
+  /** Phase F.1: writes a REAL approval_requests row, AS the requester's own session. */
   async createApprovalRequest(input: ApprovalRequestInput) {
     this.approvals.push(input);
-    return { id: `approval-${this.approvals.length}` };
+    const [{ id }] = await asUser(this.db, input.requestedBy, () =>
+      rows<{ id: string }>(
+        this.db,
+        `insert into public.approval_requests (workspace_id, module, action, title, details) values ($1, $2::public.permission_module, $3::public.permission_action, $4, $5) returning id`,
+        [input.workspaceId, input.module, input.action, input.title, JSON.stringify(input.details)],
+      ),
+    );
+    return { id };
+  }
+
+  /** Phase F.1: read-back for resolveApproval() - the requester or an Admin may see this row. */
+  async getApprovalRequest(_workspaceId: string, approvalId: string): Promise<ApprovalRequestRecord | null> {
+    const found = await asOwner(this.db, () =>
+      rows<{ id: string; workspace_id: string; requested_by: string; module: string; action: string; title: string; details: unknown; status: ApprovalRequestRecord['status'] }>(
+        this.db,
+        `select id, workspace_id, requested_by, module, action, title, details, status::text as status from public.approval_requests where id = $1`,
+        [approvalId],
+      ),
+    );
+    const row = found[0];
+    if (!row) return null;
+    return {
+      id: row.id,
+      workspaceId: row.workspace_id,
+      requestedBy: row.requested_by,
+      module: row.module,
+      action: row.action,
+      title: row.title,
+      details: (row.details ?? {}) as Record<string, unknown>,
+      status: row.status,
+    };
+  }
+
+  /** Phase F.1: runs AS the deciding Admin's own session - the DB trigger enforces the rest. */
+  async decideApprovalRequest(approvalId: string, decidedBy: string, status: 'approved' | 'rejected', note?: string) {
+    await asUser(this.db, decidedBy, () =>
+      this.db.query(`update public.approval_requests set status = $2::public.approval_status, decision_note = $3 where id = $1`, [approvalId, status, note ?? null]),
+    );
   }
 
   async finalizeAudienceBrief(principal: Principal, input: FinalizeAudienceBriefInput) {

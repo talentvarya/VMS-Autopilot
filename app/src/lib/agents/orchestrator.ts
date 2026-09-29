@@ -131,7 +131,8 @@ export async function runAgent(store: AgentStore, principal: Principal, request:
         module: call.permission.module,
         action: call.permission.action,
         title: `${definition.displayName}: ${call.toolName}`,
-        details: { toolInput: call.toolInput, agentKey: request.agentKey },
+        // toolName is what approvals.ts's resolveApproval() uses to find a resume handler.
+        details: { toolName: call.toolName, toolInput: call.toolInput, agentKey: request.agentKey },
       });
       approvalId = approval.id;
     }
