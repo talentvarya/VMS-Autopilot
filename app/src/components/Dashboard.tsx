@@ -197,6 +197,90 @@ export default function Dashboard() {
 
   const unread = 3;
 
+  // Shared between the Overview preview and the standalone Clients page (active === 'Clients')
+  // so both read the same live clientRows state instead of drifting apart.
+  const clientWorkspacesCard = (
+    <section className="card">
+      <Title
+        text="Client Workspaces"
+        right={
+          active === 'Overview' ? (
+            <button type="button" className="link" onClick={() => {
+                setActive('Clients');
+                mainRef.current?.focus();
+              }}>
+              View all clients <ArrowUpRight size={15} aria-hidden="true" />
+            </button>
+          ) : undefined
+        }
+      />
+      <div className="table-scroll" role="region" aria-label="Client workspaces table" tabIndex={0}>
+        <div className="table-grid" role="table" aria-label="Client workspaces">
+          <div className="table-head" role="row">
+            <span role="columnheader">Client</span>
+            <span role="columnheader">Channels</span>
+            <span role="columnheader">SEO/GEO Score</span>
+            <span role="columnheader">Ads Status</span>
+            <span role="columnheader">Permission</span>
+            <span role="columnheader">Health</span>
+            <span aria-hidden="true" />
+          </div>
+          {clientsLoaded && clientRows.length === 0 && (
+            <div className="client-row" role="row">
+              <span role="cell">No clients yet — use &quot;Add client&quot; to create your first one.</span>
+            </div>
+          )}
+          {clientRows.map(client => (
+            <div className="client-row" key={client.id} role="row">
+              <div className="client-name" role="cell">
+                <b className={'client-avatar ' + client.initial.toLowerCase()} aria-hidden="true">
+                  {client.initial}
+                </b>
+                <div>
+                  <strong>{client.name}</strong>
+                  <small>{client.type}</small>
+                </div>
+              </div>
+              <div className="channels" role="cell">
+                {client.channels.map(item => (
+                  <span
+                    className={'channel ' + item}
+                    key={item}
+                    role="img"
+                    aria-label={channelNames[item] ?? item}
+                  >
+                    {item}
+                  </span>
+                ))}
+              </div>
+              <div className="score" role="cell" aria-label={`SEO/GEO score ${client.score}`}>
+                {client.score}
+              </div>
+              <div className={'status ' + client.ads.toLowerCase()} role="cell">
+                <i aria-hidden="true" />
+                {client.ads}
+              </div>
+              <span
+                className={'pill ' + (client.access === 'Full Access' ? 'full' : 'limited')}
+                role="cell"
+              >
+                {client.access}
+              </span>
+              <div
+                className={'status ' + (client.health === 'Healthy' ? 'healthy' : 'attention')}
+                role="cell"
+              >
+                <i aria-hidden="true" />
+                {client.health}
+              </div>
+              <MoreHorizontal size={17} className="more" aria-hidden="true" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+
   return (
     <>
       <a className="skip-link" href="#main-content" inert={navOpen}>
@@ -332,6 +416,8 @@ export default function Dashboard() {
               <SeoAuditModule notify={notify} />
             ) : active === 'Social Publishing' ? (
               <SocialModule notify={notify} />
+            ) : active === 'Clients' ? (
+              clientWorkspacesCard
             ) : active !== 'Overview' ? (
               <div className="module">
                 <div className="module-icon" aria-hidden="true">
@@ -454,83 +540,7 @@ export default function Dashboard() {
                   </section>
                 </div>
                 <div className="two-col lower">
-                  <section className="card">
-                    <Title
-                      text="Client Workspaces"
-                      right={
-                        <button type="button" className="link" onClick={() => {
-                            setActive('Clients');
-                            mainRef.current?.focus();
-                          }}>
-                          View all clients <ArrowUpRight size={15} aria-hidden="true" />
-                        </button>
-                      }
-                    />
-                    <div className="table-scroll" role="region" aria-label="Client workspaces table" tabIndex={0}>
-                      <div className="table-grid" role="table" aria-label="Client workspaces">
-                        <div className="table-head" role="row">
-                          <span role="columnheader">Client</span>
-                          <span role="columnheader">Channels</span>
-                          <span role="columnheader">SEO/GEO Score</span>
-                          <span role="columnheader">Ads Status</span>
-                          <span role="columnheader">Permission</span>
-                          <span role="columnheader">Health</span>
-                          <span aria-hidden="true" />
-                        </div>
-                        {clientsLoaded && clientRows.length === 0 && (
-                          <div className="client-row" role="row">
-                            <span role="cell">No clients yet — use &quot;Add client&quot; to create your first one.</span>
-                          </div>
-                        )}
-                        {clientRows.map(client => (
-                          <div className="client-row" key={client.id} role="row">
-                            <div className="client-name" role="cell">
-                              <b className={'client-avatar ' + client.initial.toLowerCase()} aria-hidden="true">
-                                {client.initial}
-                              </b>
-                              <div>
-                                <strong>{client.name}</strong>
-                                <small>{client.type}</small>
-                              </div>
-                            </div>
-                            <div className="channels" role="cell">
-                              {client.channels.map(item => (
-                                <span
-                                  className={'channel ' + item}
-                                  key={item}
-                                  role="img"
-                                  aria-label={channelNames[item] ?? item}
-                                >
-                                  {item}
-                                </span>
-                              ))}
-                            </div>
-                            <div className="score" role="cell" aria-label={`SEO/GEO score ${client.score}`}>
-                              {client.score}
-                            </div>
-                            <div className={'status ' + client.ads.toLowerCase()} role="cell">
-                              <i aria-hidden="true" />
-                              {client.ads}
-                            </div>
-                            <span
-                              className={'pill ' + (client.access === 'Full Access' ? 'full' : 'limited')}
-                              role="cell"
-                            >
-                              {client.access}
-                            </span>
-                            <div
-                              className={'status ' + (client.health === 'Healthy' ? 'healthy' : 'attention')}
-                              role="cell"
-                            >
-                              <i aria-hidden="true" />
-                              {client.health}
-                            </div>
-                            <MoreHorizontal size={17} className="more" aria-hidden="true" />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </section>
+                  {clientWorkspacesCard}
                   <section className="card">
                     <Title
                       text="Approval Queue"
