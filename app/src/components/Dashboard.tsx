@@ -19,7 +19,23 @@ import {
 import SeoAuditModule from './SeoAuditModule';
 import SocialModule from './SocialModule';
 import { Approval, Stat, Timeline, Title } from './dashboard/parts';
-import { channelNames, chartBars, initialClients, nav, workspaceOptions, type ClientRow } from './dashboard/data';
+import { channelNames, chartBars, nav, workspaceOptions, type ClientRow } from './dashboard/data';
+
+type WorkspaceApiRow = { id: string; name: string; industry: string | null; kind: string; created_at: string };
+
+function toClientRow(w: WorkspaceApiRow): ClientRow {
+  return {
+    id: w.id,
+    name: w.name,
+    type: w.industry || 'Unspecified',
+    initial: w.name.charAt(0).toUpperCase() || '?',
+    score: 0,
+    ads: 'Paused',
+    access: 'Limited',
+    health: 'Needs Attention',
+    channels: [],
+  };
+}
 
 const DEFAULT_TITLE = 'VMS Autopilot — AI-Powered Marketing Automation Platform';
 
@@ -33,7 +49,8 @@ export default function Dashboard() {
   const [active, setActive] = useState('Overview');
   const [workspace, setWorkspace] = useState('Acme Marketing');
   const [workspaces, setWorkspaces] = useState(false);
-  const [clientRows, setClientRows] = useState<ClientRow[]>(initialClients);
+  const [clientRows, setClientRows] = useState<ClientRow[]>([]);
+  const [clientsLoaded, setClientsLoaded] = useState(false);
   const [approved, setApproved] = useState<number[]>([]);
   const [toast, setToast] = useState('');
   const [announcement, setAnnouncement] = useState('');
@@ -44,7 +61,6 @@ export default function Dashboard() {
   const announceCount = useRef(0);
   const firstRender = useRef(true);
   const returnFocus = useRef<'toggle' | 'main' | null>(null);
-  const newClientCount = useRef(0);
   const mainRef = useRef<HTMLElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
   const navToggleRef = useRef<HTMLButtonElement>(null);
@@ -83,23 +99,49 @@ export default function Dashboard() {
     setNavAnnouncement(name + ' page');
   }, [active]);
 
-  const addClient = () => {
-    newClientCount.current += 1;
-    setClientRows(rows => [
-      ...rows,
-      {
-        id: 'new-client-' + newClientCount.current,
-        name: 'New Client',
-        type: 'New workspace',
-        initial: 'N',
-        score: 0,
-        ads: 'Paused',
-        access: 'Limited',
-        health: 'Needs Attention',
-        channels: ['ig'],
-      },
-    ]);
-    notify('New client workspace created');
+  // Real data from Supabase (app/src/app/api/workspaces/route.ts), scoped by RLS to this
+  // signed-in user's own agency. Fetched once on mount; the middleware already guarantees
+  // an authenticated session before this component ever renders.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/workspaces');
+        const body = await res.json();
+        if (cancelled) return;
+        if (!res.ok) {
+          notify(body.error || 'Could not load clients');
+          return;
+        }
+        setClientRows((body.workspaces as WorkspaceApiRow[]).map(toClientRow));
+      } catch {
+        if (!cancelled) notify('Could not load clients — check your connection');
+      } finally {
+        if (!cancelled) setClientsLoaded(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const addClient = async () => {
+    const name = window.prompt('New client name?')?.trim();
+    if (!name) return;
+    try {
+      const res = await fetch('/api/workspaces', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        notify(body.error || 'Could not create client');
+        return;
+      }
+      setClientRows(rows => [...rows, toClientRow(body.workspace as WorkspaceApiRow)]);
+      notify(name + ' workspace created');
+    } catch {
+      notify('Could not create client — check your connection');
+    }
   };
 
   // --- Mobile navigation drawer (only visible below 1100px) ---------------------------
@@ -435,6 +477,11 @@ export default function Dashboard() {
                           <span role="columnheader">Health</span>
                           <span aria-hidden="true" />
                         </div>
+                        {clientsLoaded && clientRows.length === 0 && (
+                          <div className="client-row" role="row">
+                            <span role="cell">No clients yet — use &quot;Add client&quot; to create your first one.</span>
+                          </div>
+                        )}
                         {clientRows.map(client => (
                           <div className="client-row" key={client.id} role="row">
                             <div className="client-name" role="cell">
