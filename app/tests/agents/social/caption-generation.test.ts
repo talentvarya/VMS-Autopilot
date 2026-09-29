@@ -8,11 +8,13 @@ import { SocialAgentFixtureStore } from './fixtures';
 import { SocialStore } from '@/lib/social/store';
 
 /**
- * Phase F.2: generateCaptionText's wiring, tested directly with a fake 'anthropic'-kind
- * provider passed via providerOverride - the only way to exercise the real-path logic (cap
- * check, usage/blocked-event logging, fail-loud, no retry) while LIVE_SOCIAL_CAPTION_AI_ENABLED
- * stays committed as false. Production code (social/agent.ts's draft_post branch) never passes
- * an override - see caption-ai-provider.test.ts for proof the real switch itself is off.
+ * generateCaptionText's wiring, tested directly with a fake 'anthropic'-kind provider passed
+ * via providerOverride - the only way to exercise the real-path logic (cap check, usage/
+ * blocked-event logging, fail-loud, no retry) from a test, since createCaptionProvider() itself
+ * always falls back to the sandbox writer outside staging/production (see
+ * caption-ai-provider.test.ts), regardless of LIVE_SOCIAL_CAPTION_AI_ENABLED (Phase F.3:
+ * approved and true). Production code (social/agent.ts's draft_post branch) never passes an
+ * override - staging and production always go through the real factory and the real environment.
  */
 
 function definition(): AgentDefinition {

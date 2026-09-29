@@ -8,12 +8,14 @@ import { SeoContentSocialFixtureStore } from './agent-fixtures';
 import { ID, asOwner, asUser, createDb, rows, seedFixture, useRollbackPerTest, type Db } from './harness';
 
 /**
- * Phase F.2: the AI usage cap pre-check, usage logging, and blocked-event audit logging,
- * proven against REAL Postgres rows (ai_usage_log / workspace_settings / audit_log, all from
- * Phase F.1's own migration and foundation_schema.sql). generateCaptionText() is called with a
- * fake 'anthropic'-kind provider (providerOverride) - the only way to exercise the real-path
- * wiring while LIVE_SOCIAL_CAPTION_AI_ENABLED stays committed as false; production code never
- * passes an override (see tests/agents/social/caption-ai-provider.test.ts).
+ * The AI usage cap pre-check, usage logging, and blocked-event audit logging, proven against
+ * REAL Postgres rows (ai_usage_log / workspace_settings / audit_log, all from Phase F.1's own
+ * migration and foundation_schema.sql). generateCaptionText() is called with a fake
+ * 'anthropic'-kind provider (providerOverride) - the only way to exercise the real-path wiring
+ * from a test, since createCaptionProvider() itself always falls back to the sandbox writer
+ * outside staging/production (see tests/agents/social/caption-ai-provider.test.ts), regardless
+ * of LIVE_SOCIAL_CAPTION_AI_ENABLED (Phase F.3: approved and true). Production code never
+ * passes an override.
  */
 
 let db: Db;

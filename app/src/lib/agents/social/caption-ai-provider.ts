@@ -34,20 +34,15 @@ export interface CaptionProvider {
 }
 
 /**
- * Real caption generation is switched off - by this constant, by the environment-tier check in
- * createCaptionProvider(), and (until the key is created and approved) by the absence of a
- * configured ANTHROPIC_API_KEY. Turning it on for real use is a reviewed code change that
- * needs the owner's explicit approval, exactly like LIVE_SOCIAL_ENABLED
+ * Phase F.3: approved and enabled. Real caption generation still only ever reaches a live call
+ * when createCaptionProvider()'s environment-tier check (liveFeaturesConceivable()) ALSO
+ * agrees - development and test still can never reach it regardless of this constant, and
+ * production is unaffected unless ANTHROPIC_API_KEY is itself configured there (Phase F.3's
+ * approved scope is staging only - the key was configured only in the staging deployment).
+ * Turning this back off is a reviewed code change, exactly like LIVE_SOCIAL_ENABLED
  * (src/lib/social/sources.ts) and LIVE_IMAGE_GEN_ENABLED (src/lib/agents/social/image.ts).
  */
-export const LIVE_SOCIAL_CAPTION_AI_ENABLED = false as const;
-
-export class LiveCaptionAiDisabledError extends Error {
-  constructor() {
-    super('Real AI caption generation is switched off. Only the built-in sandbox writer can be used until it is approved and enabled.');
-    this.name = 'LiveCaptionAiDisabledError';
-  }
-}
+export const LIVE_SOCIAL_CAPTION_AI_ENABLED = true as const;
 
 const MAX_TOPIC_CHARS = 1000;
 const MAX_CTA_CHARS = 200;
@@ -121,14 +116,20 @@ export class AnthropicCaptionProvider implements CaptionProvider {
 }
 
 /**
- * `overrides` exists ONLY so a real-provider test can exercise the Anthropic path explicitly
- * without flipping the committed LIVE_SOCIAL_CAPTION_AI_ENABLED constant - application code
- * (social/agent.ts) never passes it, so production and staging always follow the real,
- * committed switch.
+ * `overrides` exists ONLY so a test can exercise a specific path explicitly without depending
+ * on the real committed LIVE_SOCIAL_CAPTION_AI_ENABLED constant or the real process.env -
+ * application code (social/agent.ts) never passes it, so production and staging always follow
+ * the real, committed switch and the real environment.
+ *
+ * Outside staging/production (development, test, or any environment liveFeaturesConceivable()
+ * does not recognize), this ALWAYS returns the sandbox writer, silently - never an error, even
+ * once LIVE_SOCIAL_CAPTION_AI_ENABLED is true, so a developer's own machine or the test suite
+ * never fails just because staging has approved this feature. The two gates only ever narrow
+ * where a REAL call can happen; they never turn an otherwise-normal local run into a crash.
  */
 export function createCaptionProvider(overrides?: { liveEnabled?: boolean; env?: NodeJS.ProcessEnv }): CaptionProvider {
   const liveEnabled = overrides?.liveEnabled ?? LIVE_SOCIAL_CAPTION_AI_ENABLED;
   if (!liveEnabled) return new SandboxCaptionProvider();
-  if (!liveFeaturesConceivable(overrides?.env)) throw new LiveCaptionAiDisabledError();
+  if (!liveFeaturesConceivable(overrides?.env)) return new SandboxCaptionProvider();
   return new AnthropicCaptionProvider();
 }

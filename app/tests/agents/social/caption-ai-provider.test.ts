@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   AnthropicCaptionProvider,
   LIVE_SOCIAL_CAPTION_AI_ENABLED,
-  LiveCaptionAiDisabledError,
   SandboxCaptionProvider,
   createCaptionProvider,
 } from '@/lib/agents/social/caption-ai-provider';
@@ -11,8 +10,8 @@ import { draftCaption } from '@/lib/agents/social/captions';
 const env = (overrides: Record<string, string | undefined>) => overrides as unknown as NodeJS.ProcessEnv;
 
 describe('LIVE_SOCIAL_CAPTION_AI_ENABLED - the committed switch itself', () => {
-  it('is false in this commit - real AI calls are switched off by default', () => {
-    expect(LIVE_SOCIAL_CAPTION_AI_ENABLED).toBe(false);
+  it('Phase F.3: approved and true in this commit', () => {
+    expect(LIVE_SOCIAL_CAPTION_AI_ENABLED).toBe(true);
   });
 });
 
@@ -34,29 +33,36 @@ describe('SandboxCaptionProvider - the pre-existing, unchanged, deterministic wr
 });
 
 describe('createCaptionProvider - double-gated: the compile-time switch, then the environment tier', () => {
-  it('with no overrides (the real, committed default): always returns the sandbox provider', () => {
+  it('with no overrides, running under the test runner (not staging/production): still the sandbox provider, even though the switch is now on - the environment gate protects local/test runs regardless', () => {
     const provider = createCaptionProvider();
     expect(provider.kind).toBe('sandbox');
     expect(provider).toBeInstanceOf(SandboxCaptionProvider);
   });
 
-  it('liveEnabled forced true, but the environment is development: still refused', () => {
-    expect(() => createCaptionProvider({ liveEnabled: true, env: env({ APP_ENV: 'development' }) })).toThrow(LiveCaptionAiDisabledError);
+  it('liveEnabled forced true, but the environment is development: gracefully falls back to sandbox, never an error', () => {
+    const provider = createCaptionProvider({ liveEnabled: true, env: env({ APP_ENV: 'development' }) });
+    expect(provider.kind).toBe('sandbox');
   });
 
-  it('liveEnabled forced true, but the environment is test: still refused', () => {
-    expect(() => createCaptionProvider({ liveEnabled: true, env: env({ APP_ENV: 'test' }) })).toThrow(LiveCaptionAiDisabledError);
+  it('liveEnabled forced true, but the environment is test: gracefully falls back to sandbox, never an error', () => {
+    const provider = createCaptionProvider({ liveEnabled: true, env: env({ APP_ENV: 'test' }) });
+    expect(provider.kind).toBe('sandbox');
   });
 
-  it('liveEnabled forced true AND environment is staging: returns the real provider', () => {
-    const provider = createCaptionProvider({ liveEnabled: true, env: env({ APP_ENV: 'staging' }) });
+  it('liveEnabled true (the real, committed value) AND environment is staging: returns the real provider', () => {
+    const provider = createCaptionProvider({ env: env({ APP_ENV: 'staging' }) });
     expect(provider.kind).toBe('anthropic');
     expect(provider).toBeInstanceOf(AnthropicCaptionProvider);
   });
 
-  it('liveEnabled left false, even in staging: still the sandbox provider (both gates are required, not either)', () => {
-    const provider = createCaptionProvider({ env: env({ APP_ENV: 'staging' }) });
+  it('liveEnabled forced false, even in staging: still the sandbox provider (both gates are required, not either)', () => {
+    const provider = createCaptionProvider({ liveEnabled: false, env: env({ APP_ENV: 'staging' }) });
     expect(provider.kind).toBe('sandbox');
+  });
+
+  it('liveEnabled true AND environment is production: also returns the real provider - production safety depends on ANTHROPIC_API_KEY never being configured there, not on this gate alone', () => {
+    const provider = createCaptionProvider({ env: env({ APP_ENV: 'production' }) });
+    expect(provider.kind).toBe('anthropic');
   });
 });
 
