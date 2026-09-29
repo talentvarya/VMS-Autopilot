@@ -12,7 +12,7 @@ import { POST_STATUSES, POST_STATUS_LABELS, type PostStatus } from '@/lib/social
 import { Title } from './dashboard/parts';
 import CalendarView from './social/CalendarView';
 import ChannelsPanel from './social/ChannelsPanel';
-import Composer from './social/Composer';
+import Composer, { type RealClient } from './social/Composer';
 import PostItem from './social/PostItem';
 
 /**
@@ -51,7 +51,7 @@ function useNarrow() {
   return narrow;
 }
 
-export default function SocialModule({ notify, initialPreview = 'admin' }: { notify: (text: string) => void; initialPreview?: Preview }) {
+export default function SocialModule({ notify, realClients = [], initialPreview = 'admin' }: { notify: (text: string) => void; realClients?: RealClient[]; initialPreview?: Preview }) {
   const [preview, setPreview] = useState<Preview>(initialPreview);
   const [workspaceId, setWorkspaceId] = useState(SAMPLE_WORKSPACES[0].id);
   const [, bump] = useReducer((n: number) => n + 1, 0);
@@ -213,7 +213,7 @@ export default function SocialModule({ notify, initialPreview = 'admin' }: { not
       )}
 
       {composing && canCreate && (
-        <Composer channels={store.channels} now={clock.current} onSave={saveDrafts} onCancel={() => { setComposing(false); setFocusId(null); }} />
+        <Composer channels={store.channels} now={clock.current} onSave={saveDrafts} onCancel={() => { setComposing(false); setFocusId(null); }} realClients={realClients} notify={notify} />
       )}
 
       <div className="two-col">

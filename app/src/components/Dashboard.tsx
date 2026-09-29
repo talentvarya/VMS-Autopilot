@@ -788,7 +788,7 @@ export default function Dashboard() {
             {active === 'SEO / GEO Audit' ? (
               <SeoAuditModule notify={notify} />
             ) : active === 'Social Publishing' ? (
-              <SocialModule notify={notify} />
+              <SocialModule notify={notify} realClients={clientRows.map(c => ({ id: c.id, name: c.name }))} />
             ) : active === 'Clients' ? (
               clientWorkspacesCard
             ) : active === 'Paid Ads' ? (
