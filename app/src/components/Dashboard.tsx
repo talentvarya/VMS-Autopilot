@@ -19,7 +19,7 @@ import {
 import SeoAuditModule from './SeoAuditModule';
 import SocialModule from './SocialModule';
 import { Approval, SimpleTable, Stat, Timeline, Title } from './dashboard/parts';
-import { channelNames, chartBars, nav, workspaceOptions, type ClientRow } from './dashboard/data';
+import { channelNames, nav, workspaceOptions, type ClientRow } from './dashboard/data';
 import { useLazyList } from './dashboard/hooks';
 import { useRouter } from 'next/navigation';
 import { createClient as createBrowserSupabaseClient } from '@/lib/supabase/client';
@@ -283,6 +283,32 @@ export default function Dashboard() {
       setDecidingApprovalId(null);
     }
   };
+
+  // Real numbers for the Overview stat cards + activity feed (app/src/app/api/overview-stats).
+  const [overviewStats, setOverviewStats] = useState<{
+    scheduledPosts: number;
+    leadsThisMonth: number;
+    healthScore: number | null;
+    recentActivity: { id: number; at: string; action: string; target_type: string | null; workspaces: WorkspaceRef }[];
+  } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/overview-stats');
+        const body = await res.json();
+        if (cancelled) return;
+        if (!res.ok) {
+          notify(body.error || 'Could not load overview stats');
+          return;
+        }
+        setOverviewStats(body);
+      } catch {
+        if (!cancelled) notify('Could not load overview stats — check your connection');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const [campaigns, campaignsLoaded] = useLazyList<CampaignRow>(active, 'Paid Ads', '/api/ad-campaigns', notify, 'campaigns');
   const [leads, leadsLoaded] = useLazyList<LeadRow>(active, 'Leads & CRM', '/api/leads', notify, 'leads');
@@ -725,53 +751,41 @@ export default function Dashboard() {
             ) : (
               <>
                 <div className="stats">
-                  <Stat icon={<Users aria-hidden="true" />} tone="violet" label="Active Clients" value="24" change="+14%" />
+                  <Stat icon={<Users aria-hidden="true" />} tone="violet" label="Active Clients" value={clientsLoaded ? String(clientRows.length) : '…'} />
                   <Stat
                     icon={<CalendarDays aria-hidden="true" />}
                     tone="blue"
                     label="Scheduled Posts"
-                    value="186"
-                    change="+26%"
+                    value={overviewStats ? String(overviewStats.scheduledPosts) : '…'}
                   />
                   <Stat
                     icon={<Activity aria-hidden="true" />}
                     tone="teal"
                     label="Leads This Month"
-                    value="1,248"
-                    change="+38%"
+                    value={overviewStats ? String(overviewStats.leadsThisMonth) : '…'}
                   />
                   <Stat
                     icon={<ShieldCheck aria-hidden="true" />}
                     tone="green"
                     label="AI Health"
-                    value="98%"
-                    change="+2%"
+                    value={overviewStats ? (overviewStats.healthScore != null ? overviewStats.healthScore + '%' : 'No data yet') : '…'}
                   />
                 </div>
                 <div className="two-col">
                   <section className="card">
-                    <Title
-                      text="AI Operations Monitor"
-                      right={
-                        <span className="checked">
-                          <Activity size={14} aria-hidden="true" /> Last checked: Apr 24, 2025, 9:12 AM
-                        </span>
-                      }
-                    />
-                    <div className="healthy">
-                      <b aria-hidden="true">
-                        <Check size={20} />
-                      </b>
-                      <div>
-                        <strong>All systems healthy</strong>
-                        <p>Your AI operations are running smoothly.</p>
-                      </div>
-                    </div>
+                    <Title text="Recent Activity" />
                     <div className="monitor">
-                      <div className="timeline" role="list" aria-label="Recent AI activity">
-                        <Timeline text="SEO audit completed" meta="Nova Clinic  •  2 minutes ago" />
-                        <Timeline text="3 posts scheduled" meta="Bright Homes  •  12 minutes ago" />
-                        <Timeline text="Domain SSL renewed" meta="Urban Eats  •  28 minutes ago" />
+                      <div className="timeline" role="list" aria-label="Recent activity">
+                        {overviewStats && overviewStats.recentActivity.length === 0 && (
+                          <p style={{ opacity: 0.7 }}>No activity yet.</p>
+                        )}
+                        {overviewStats?.recentActivity.map(item => (
+                          <Timeline
+                            key={item.id}
+                            text={item.action.replace(/[._]/g, ' ')}
+                            meta={(item.workspaces?.name ?? 'Agency') + '  •  ' + timeAgo(item.at)}
+                          />
+                        ))}
                       </div>
                       <div className="bot-area">
                         {/* A plain <img> (not next/image) keeps the approved markup exactly. */}
@@ -784,47 +798,10 @@ export default function Dashboard() {
                     </div>
                   </section>
                   <section className="card">
-                    <Title
-                      text="Leads and ROAS"
-                      right={
-                        <div className="roas">
-                          <strong>↗ +42%</strong>
-                          <span>Leads MoM</span>
-                          <b>3.2</b>
-                          <span>Avg ROAS</span>
-                        </div>
-                      }
-                    />
-                    <div className="legend">
-                      <span>● Leads</span>
-                      <span>● ROAS</span>
-                    </div>
-                    <div
-                      className="chart"
-                      role="img"
-                      aria-label="Chart of daily leads (bars) and ROAS (line) for April 2025. Leads rose from 34 to 135, up 42 percent month on month, with an average ROAS of 3.2."
-                    >
-                      <div className="bars">
-                        {chartBars.map((height, index) => (
-                          <i key={index} style={{ height: String(height) + 'px' }} />
-                        ))}
-                      </div>
-                      <svg viewBox="0 0 600 150" preserveAspectRatio="none">
-                        <polyline
-                          points="5,116 45,100 85,108 125,87 165,95 205,78 245,63 285,70 325,45 365,50 405,30 445,42 485,25 525,15 595,2"
-                          fill="none"
-                          stroke="#09b8b2"
-                          strokeWidth="3"
-                        />
-                      </svg>
-                      <div className="x-axis">
-                        <span>Apr 1</span>
-                        <span>Apr 7</span>
-                        <span>Apr 14</span>
-                        <span>Apr 21</span>
-                        <span>Apr 28</span>
-                      </div>
-                    </div>
+                    <Title text="Leads and ROAS" />
+                    <p style={{ padding: '8px 0', opacity: 0.7 }}>
+                      Not enough data yet to show a trend — this fills in as clients get real leads and ad campaigns.
+                    </p>
                   </section>
                 </div>
                 <div className="two-col lower">

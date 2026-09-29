@@ -58,7 +58,8 @@ export function Stat({
   tone: string;
   label: string;
   value: string;
-  change: string;
+  /** Omit or leave empty when there's no real month-over-month comparison to show yet. */
+  change?: string;
 }) {
   return (
     <div className="stat">
@@ -66,9 +67,11 @@ export function Stat({
       <div>
         <span>{label}</span>
         <strong>{value}</strong>
-        <em>
-          ↗ {change} <small>vs last month</small>
-        </em>
+        {change && (
+          <em>
+            ↗ {change} <small>vs last month</small>
+          </em>
+        )}
       </div>
     </div>
   );
