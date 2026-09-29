@@ -27,8 +27,10 @@
  */
 
 import { decide } from '@/lib/permissions';
+import { runAnalyticsAgent } from './analytics/agent';
 import { runContentAgent, type ContentAgentInput } from './content/agent';
 import { runEchoAgent, type EchoAgentInput } from './echo-agent';
+import { runMonitoringAgent, type MonitoringAgentInput } from './monitoring/agent';
 import { runSeoGeoAgent, type SeoGeoAgentInput } from './seo/agent';
 import { runSocialMediaSuperAgent, type SocialAgentInput } from './social/agent';
 import { toolDefinition } from './tools';
@@ -86,7 +88,15 @@ export async function runAgent(store: AgentStore, principal: Principal, request:
     return { ok: false, reason: `the "${definition.displayName}" agent is switched off for this workspace` };
   }
 
-  const logic = await invokeAgentLogic(request.agentKey, request.input, store, principal);
+  let logic: AgentLogicResult;
+  try {
+    logic = await invokeAgentLogic(request.agentKey, request.input, store, principal);
+  } catch (error) {
+    // A malformed or unknown-task input (see analytics/agent.ts's normalizeInput()) - or any
+    // other error an agent's own logic throws before proposing anything - is rejected here
+    // rather than crashing the caller. No tool call was even proposed, so nothing was written.
+    return { ok: false, reason: error instanceof Error ? error.message : `the "${definition.displayName}" agent could not process this input` };
+  }
 
   const resolved: ResolvedToolCall[] = [];
   let anyDenied = false;
@@ -222,5 +232,7 @@ async function invokeAgentLogic(
   if (agentKey === 'social_media_super_agent') return runSocialMediaSuperAgent(input as unknown as SocialAgentInput, store, principal);
   if (agentKey === 'seo_geo_agent') return runSeoGeoAgent(input as unknown as SeoGeoAgentInput, store, principal);
   if (agentKey === 'content_agent') return runContentAgent(input as unknown as ContentAgentInput, store, principal);
+  if (agentKey === 'analytics_reporting_agent') return runAnalyticsAgent(input);
+  if (agentKey === 'monitoring_auto_repair_agent') return runMonitoringAgent(input as unknown as MonitoringAgentInput, store, principal);
   throw new Error(`no logic implemented yet for agent "${agentKey}"`);
 }

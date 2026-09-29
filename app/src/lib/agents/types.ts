@@ -153,6 +153,21 @@ export interface CreateContentDraftInput {
   draftedByAgent: boolean;
 }
 
+export const HEALTH_CHECK_STATUSES = ['pass', 'fail'] as const;
+export type HealthCheckStatus = (typeof HEALTH_CHECK_STATUSES)[number];
+
+export interface RecordHealthCheckInput {
+  workspaceId: string;
+  checkType: string;
+  status: HealthCheckStatus;
+  details?: Record<string, unknown>;
+}
+
+export interface RepairStaleInput {
+  workspaceId: string;
+  olderThanMinutes?: number;
+}
+
 /**
  * What the Orchestrator needs from the outside world. Sub-phase A tested it against a small
  * in-memory fake using only the first three methods; a real Supabase service-role client is a
@@ -186,4 +201,12 @@ export interface AgentStore {
   proposeFix?(principal: Principal, input: ProposeFixInput): Promise<void>;
   createContentDraft?(principal: Principal, input: CreateContentDraftInput): Promise<{ id: string }>;
   submitContentDraftForReview?(principal: Principal, draftId: string): Promise<void>;
+  /** Sandbox-only: no real HTTP request is ever made. Writes a health_checks row. */
+  recordHealthCheck?(principal: Principal, input: RecordHealthCheckInput): Promise<{ id: string }>;
+  /** Calls the REAL, unmodified Phase 2 failStaleRuns() and records the result. */
+  repairStaleAudits?(principal: Principal, input: RepairStaleInput): Promise<{ failedCount: number }>;
+  /** Calls the REAL, unmodified Phase 3 failStalePublishing() and records the result. */
+  repairStaleSocialPublishing?(principal: Principal, input: RepairStaleInput): Promise<{ failedCount: number }>;
+  /** Moves a failed post back to 'approved' ONLY - never any further toward being sent. */
+  resumeFailedSocialPost?(principal: Principal, postId: string): Promise<void>;
 }

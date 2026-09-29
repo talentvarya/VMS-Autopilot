@@ -115,6 +115,69 @@ export const TOOLS: Record<string, ToolDefinition> = {
     description: 'Moves a drafted article to "in_review" (pending approval).',
     permission: { module: 'seo_geo', action: 'create' },
   },
+
+  /**
+   * Sub-phase D adds ten tools for the Analytics/Reporting Agent and the Monitoring/Auto-Repair
+   * Agent. The five Analytics tools all reuse `reports:view` (never sensitive, already a
+   * Client default) purely so every read still shows up in the agent_tool_calls audit trail -
+   * none of them ever sets `apply()`, so nothing they touch is ever written. The five
+   * Monitoring tools each reuse the module that actually governs the thing being touched:
+   * `health_monitor` (already Admin-ceiling-only since Phase 1 - no non-admin role can ever
+   * hold any action on it) for the agent's own check/incident bookkeeping, and
+   * `social:publish_execute` (already sensitive) for the one repair that changes a business
+   * row outside its own module. There is no tool here mapped to publish/send, a budget, a
+   * domain, a permission grant, or an agent's own system prompt.
+   */
+  summarize_seo_performance: {
+    name: 'summarize_seo_performance',
+    description: 'Summarizes already-fetched audit scores. Read-only.',
+    permission: { module: 'reports', action: 'view' },
+  },
+  summarize_social_activity: {
+    name: 'summarize_social_activity',
+    description: 'Summarizes already-fetched social post activity. Read-only.',
+    permission: { module: 'reports', action: 'view' },
+  },
+  summarize_content_pipeline: {
+    name: 'summarize_content_pipeline',
+    description: 'Summarizes already-fetched content draft activity. Read-only.',
+    permission: { module: 'reports', action: 'view' },
+  },
+  summarize_agent_activity: {
+    name: 'summarize_agent_activity',
+    description: 'Summarizes already-fetched agent run activity. Read-only.',
+    permission: { module: 'reports', action: 'view' },
+  },
+  compile_report: {
+    name: 'compile_report',
+    description: 'Combines already-produced summaries into one client-safe report. Read-only.',
+    permission: { module: 'reports', action: 'view' },
+  },
+  check_website_availability: {
+    name: 'check_website_availability',
+    description: 'Sandbox-simulated reachability check against the known fixture sites. Never a real HTTP request.',
+    permission: { module: 'health_monitor', action: 'create' },
+  },
+  check_stale_audits: {
+    name: 'check_stale_audits',
+    description: 'Calls the real, unmodified Phase 2 failStaleRuns() - fails audits stuck running too long. Never forces one through.',
+    permission: { module: 'health_monitor', action: 'edit' },
+  },
+  check_stale_social_publishing: {
+    name: 'check_stale_social_publishing',
+    description: 'Calls the real, unmodified Phase 3 failStalePublishing() - fails posts stuck publishing too long. Never forces one through.',
+    permission: { module: 'health_monitor', action: 'edit' },
+  },
+  requeue_failed_audit: {
+    name: 'requeue_failed_audit',
+    description: 'Queues a fresh audit run for a site, via the same queueAudit() the SEO/GEO Agent already uses. Never forces the old run through.',
+    permission: { module: 'health_monitor', action: 'edit' },
+  },
+  resume_failed_post: {
+    name: 'resume_failed_post',
+    description: 'Moves a failed post back to "approved" only - never any further toward being sent. Uses the SAME sensitive action a human\'s own publish already needs.',
+    permission: { module: 'social', action: 'publish_execute' },
+  },
 };
 
 export function toolDefinition(name: string): ToolDefinition | undefined {
