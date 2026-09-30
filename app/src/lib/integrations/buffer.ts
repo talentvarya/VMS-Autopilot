@@ -99,10 +99,18 @@ async function postForm(body: Record<string, string>): Promise<BufferTokens> {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams(body).toString(),
   });
-  const json: { access_token?: string; refresh_token?: string; expires_in?: number; error?: string; error_description?: string } | null =
-    await res.json().catch(() => null);
+  const rawText = await res.text();
+  let json: { access_token?: string; refresh_token?: string; expires_in?: number; error?: string; error_description?: string } | null = null;
+  try {
+    json = JSON.parse(rawText);
+  } catch {
+    json = null;
+  }
   if (!res.ok || !json?.access_token || !json?.refresh_token) {
-    throw new Error(json?.error_description || json?.error || 'Buffer did not return an access token');
+    // TEMPORARY DEBUG - Buffer's real response shape has never been seen before; once this is
+    // diagnosed, revert to just the safe error_description/error message.
+    const safeBody = rawText.replace(/"(client_secret|access_token|refresh_token)"\s*:\s*"[^"]*"/g, '"$1":"[redacted]"').slice(0, 400);
+    throw new Error(`[DEBUG] Buffer token endpoint returned HTTP ${res.status}: ${safeBody || '(empty body)'}`);
   }
   return {
     accessToken: json.access_token,
