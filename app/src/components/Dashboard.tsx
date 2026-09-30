@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Activity,
+  ArrowLeft,
   ArrowUpRight,
   Bell,
   CalendarDays,
@@ -984,7 +985,12 @@ export default function Dashboard() {
           <button type="button" className="sidebar-close" aria-label="Close navigation menu" onClick={closeNav}>
             <X size={20} />
           </button>
-          <div className="brand">
+          <button
+            type="button"
+            className="brand"
+            onClick={() => selectModule('Overview')}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', width: '100%' }}
+          >
             <span className="logo" aria-hidden="true">
               V
             </span>
@@ -996,7 +1002,7 @@ export default function Dashboard() {
                 Automation Platform
               </small>
             </div>
-          </div>
+          </button>
           <nav aria-label="Main navigation">
             {nav.map(([label, Icon]) => (
               <button
@@ -1128,6 +1134,17 @@ export default function Dashboard() {
           </header>
           <section className="content" aria-labelledby="page-heading">
             <div className="heading">
+              {active !== 'Overview' && (
+                <button
+                  type="button"
+                  className="outline soc-btn"
+                  onClick={() => selectModule('Overview')}
+                  style={{ marginRight: 10 }}
+                  aria-label="Back to Overview"
+                >
+                  <ArrowLeft size={16} aria-hidden="true" /> Back
+                </button>
+              )}
               <h2 id="page-heading">{active === 'Overview' ? 'Agency Overview' : active}</h2>
               <button type="button" className="date">
                 <CalendarDays size={16} aria-hidden="true" /> Apr 1, 2025 – Apr 30, 2025{' '}
