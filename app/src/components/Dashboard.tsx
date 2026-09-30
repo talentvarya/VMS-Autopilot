@@ -16,6 +16,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
+import ConnectedAccounts from './ConnectedAccounts';
 import SeoAuditModule from './SeoAuditModule';
 import SocialModule from './SocialModule';
 import { Approval, SimpleTable, Stat, Timeline, Title } from './dashboard/parts';
@@ -164,6 +165,20 @@ export default function Dashboard() {
     mainRef.current?.focus();
   };
   useEffect(() => () => window.clearTimeout(toastTimer.current), []);
+
+  // Picks up the redirect back from /api/integrations/buffer/callback (real Buffer OAuth,
+  // Phase G.11) and shows the result as a toast, then strips the query string so refreshing
+  // the page doesn't repeat the message.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get('buffer');
+    if (!status) return;
+    const message = params.get('bufferMessage') ?? '';
+    notify(status === 'connected' ? `Buffer connected (${message})` : `Buffer connection failed: ${message}`);
+    setActive('Connected Accounts');
+    router.replace('/', { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Tell screen-reader users (and the browser tab) which page they are on.
   useEffect(() => {
@@ -1045,6 +1060,8 @@ export default function Dashboard() {
               <SeoAuditModule notify={notify} />
             ) : active === 'Social Publishing' ? (
               <SocialModule notify={notify} realClients={clientRows.map(c => ({ id: c.id, name: c.name }))} />
+            ) : active === 'Connected Accounts' ? (
+              <ConnectedAccounts notify={notify} realClients={clientRows.map(c => ({ id: c.id, name: c.name }))} />
             ) : active === 'Clients' ? (
               clientWorkspacesCard
             ) : active === 'Paid Ads' ? (
