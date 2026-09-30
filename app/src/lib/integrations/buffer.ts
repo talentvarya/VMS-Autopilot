@@ -89,7 +89,9 @@ export function buildAuthorizeUrl(params: { redirectUri: string; state: string; 
 
 export interface BufferTokens {
   accessToken: string;
-  refreshToken: string;
+  /** Buffer does not always return a refresh token (observed live 2026-09-30) - when absent, the
+   *  connection simply expires after expiresAt and the person reconnects. */
+  refreshToken: string | null;
   expiresAt: string;
 }
 
@@ -106,15 +108,12 @@ async function postForm(body: Record<string, string>): Promise<BufferTokens> {
   } catch {
     json = null;
   }
-  if (!res.ok || !json?.access_token || !json?.refresh_token) {
-    // TEMPORARY DEBUG - Buffer's real response shape has never been seen before; once this is
-    // diagnosed, revert to just the safe error_description/error message.
-    const safeBody = rawText.replace(/"(client_secret|access_token|refresh_token)"\s*:\s*"[^"]*"/g, '"$1":"[redacted]"').slice(0, 400);
-    throw new Error(`[DEBUG] Buffer token endpoint returned HTTP ${res.status}: ${safeBody || '(empty body)'}`);
+  if (!res.ok || !json?.access_token) {
+    throw new Error(json?.error_description || json?.error || 'Buffer did not return an access token');
   }
   return {
     accessToken: json.access_token,
-    refreshToken: json.refresh_token,
+    refreshToken: json.refresh_token ?? null,
     expiresAt: new Date(Date.now() + (json.expires_in ?? 3600) * 1000).toISOString(),
   };
 }
@@ -185,7 +184,7 @@ export interface BufferMetric { type: string; value: number; unit: string }
 interface BufferConnectionRow {
   buffer_organization_id: string;
   access_token: string;
-  refresh_token: string;
+  refresh_token: string | null;
   token_expires_at: string;
 }
 
@@ -193,7 +192,9 @@ interface BufferConnectionRow {
  * Reads the stored connection for a workspace via the service-role client (the only client
  * allowed to - see the migration) and refreshes the access token first if it is expired or
  * about to expire. Refresh tokens are single-use, so a refreshed pair is written straight back
- * before the caller ever gets a chance to use the (now-invalid) old refresh token.
+ * before the caller ever gets a chance to use the (now-invalid) old refresh token. When Buffer
+ * never gave this connection a refresh token, an expired access token can't be renewed - the
+ * caller gets null back, same as "not connected", and the person reconnects from the UI.
  */
 export async function getValidBufferAccessToken(
   service: SupabaseClient,
@@ -210,6 +211,7 @@ export async function getValidBufferAccessToken(
   if (expiresInMs > 60_000) {
     return { accessToken: data.access_token, organizationId: data.buffer_organization_id };
   }
+  if (!data.refresh_token) return null;
 
   const refreshed = await refreshTokens(data.refresh_token);
   await service
