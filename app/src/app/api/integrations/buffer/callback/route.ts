@@ -68,7 +68,8 @@ export async function GET(request: Request) {
     );
     if (error) {
       console.error('[db error]', error.code ?? '(no code)', error.message);
-      throw new Error('Could not save the Buffer connection. Please try again.');
+      // TEMPORARY DEBUG - revert to the safe generic message once diagnosed.
+      throw new Error(`[DEBUG] Could not save the Buffer connection: ${error.code ?? '(no code)'} ${error.message}`);
     }
 
     return redirectHome('connected', organization.name);
