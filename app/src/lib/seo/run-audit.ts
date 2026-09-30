@@ -34,6 +34,9 @@ export const GENERIC_AUDIT_ERROR = 'The audit could not be completed. Please try
 
 export function safeErrorMessage(error: unknown): string {
   if (error instanceof Error && CLIENT_SAFE_ERRORS.has(error.name)) return error.message.replace(/\s+/g, ' ').slice(0, 300);
+  // TEMPORARY DEBUG - live audits have never been exercised against a real site before; show the
+  // real cause once to diagnose, then revert to GENERIC_AUDIT_ERROR.
+  if (error instanceof Error) return `[DEBUG] ${error.name}: ${error.message}`.replace(/\s+/g, ' ').slice(0, 300);
   return GENERIC_AUDIT_ERROR;
 }
 
