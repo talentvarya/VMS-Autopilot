@@ -18,6 +18,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createServiceClient } from '@/lib/supabase/service';
 import type { AuditEvent } from '@/lib/permissions';
+import { runAudit } from '@/lib/seo/engine';
+import { createSource } from '@/lib/seo/sources';
 import type { AgentDefinition, AgentStore } from './types';
 
 export function createSupabaseAgentStore(supabase: SupabaseClient): AgentStore {
@@ -250,6 +252,148 @@ export function createSupabaseAgentStore(supabase: SupabaseClient): AgentStore {
         .single();
       if (error) throw error;
       return { id: data.id };
+    },
+
+    /** Reimplements failStaleRuns()/failStalePublishing() (src/lib/seo/run-audit.ts,
+     * src/lib/social/publish-worker.ts) using the service client's own query builder instead
+     * of their raw-SQL Queryable interface - this app has no direct Postgres connection
+     * string, only the Supabase REST API, so a supabase-js update() achieves the identical
+     * effect (same status transition, same cutoff) without one. Service-role because these are
+     * cross-workspace maintenance sweeps, not a single row a normal session would touch. */
+    repairStaleAudits: async (_principal, input) => {
+      const service = createServiceClient();
+      const cutoff = new Date(Date.now() - (input.olderThanMinutes ?? 15) * 60_000).toISOString();
+      const { data, error } = await service
+        .from('audit_runs')
+        .update({ status: 'failed', error: 'The audit took too long and was stopped.' })
+        .eq('status', 'running')
+        .lt('started_at', cutoff)
+        .select('id');
+      if (error) throw error;
+      return { failedCount: data?.length ?? 0 };
+    },
+
+    repairStaleSocialPublishing: async (_principal, input) => {
+      const service = createServiceClient();
+      const cutoff = new Date(Date.now() - (input.olderThanMinutes ?? 15) * 60_000).toISOString();
+      const { data, error } = await service
+        .from('social_posts')
+        .update({ status: 'failed', last_error: 'We could not confirm whether this was published. Please check the channel before trying again.' })
+        .eq('status', 'publishing')
+        .lt('updated_at', cutoff)
+        .select('id');
+      if (error) throw error;
+      return { failedCount: data?.length ?? 0 };
+    },
+
+    resumeFailedSocialPost: async (_principal, postId) => {
+      const { error } = await supabase.from('social_posts').update({ status: 'approved' }).eq('id', postId).eq('status', 'failed');
+      if (error) throw error;
+    },
+
+    // ---------- SEO/GEO Agent --------------------------------------------------------------
+    // Sandbox-only (createSource('fixture')) - the exact same safety boundary the SEO/GEO Audit
+    // page's own direct engine call already respects. Real website audits stay switched off
+    // (src/lib/seo/sources.ts, LIVE_AUDITS_ENABLED) until that is separately reviewed.
+
+    queueAudit: async (_principal, input) => {
+      const service = createServiceClient();
+
+      const { data: site, error: siteError } = await service.from('sites').select('origin, business_type').eq('id', input.siteId).maybeSingle();
+      if (siteError) throw siteError;
+      if (!site) throw new Error('that site was not found');
+
+      const { data: run, error: insertError } = await service
+        .from('audit_runs')
+        .insert({ workspace_id: input.workspaceId, site_id: input.siteId })
+        .select('id')
+        .single();
+      if (insertError) throw insertError;
+
+      const { data: claimed } = await service.from('audit_runs').update({ status: 'running', started_at: new Date().toISOString() }).eq('id', run.id).eq('status', 'queued').select('id');
+      if (!claimed || claimed.length === 0) return { runId: run.id };
+
+      try {
+        const snapshot = await createSource('fixture').getSnapshot(site.origin);
+        const result = runAudit(snapshot, { businessType: site.business_type as 'local' | 'online' });
+        if (result.findings.length > 0) {
+          const { error: findingsError } = await service.from('audit_findings').insert(
+            result.findings.map(f => ({
+              run_id: run.id,
+              workspace_id: input.workspaceId,
+              category: f.category,
+              severity: f.severity,
+              code: f.code,
+              title: f.title,
+              evidence: f.evidence,
+              recommendation: f.recommendation,
+            })),
+          );
+          if (findingsError) throw findingsError;
+        }
+        await service
+          .from('audit_runs')
+          .update({
+            status: 'completed',
+            finished_at: new Date().toISOString(),
+            engine_version: result.engineVersion,
+            overall_score: result.overallScore,
+            overall_note: result.overallNote,
+            category_scores: result.categoryScores,
+            counts: result.counts,
+          })
+          .eq('id', run.id);
+      } catch {
+        await service.from('audit_runs').update({ status: 'failed', finished_at: new Date().toISOString(), error: 'The audit could not be completed. Please try again, or ask your agency.' }).eq('id', run.id);
+      }
+      return { runId: run.id };
+    },
+
+    proposeFix: async (_principal, input) => {
+      const { error } = await supabase.from('audit_findings').update({ fix_status: 'applied', fix_note: input.note ?? null }).eq('id', input.findingId);
+      if (error) throw error;
+    },
+
+    // ---------- Content Agent ---------------------------------------------------------------
+
+    createContentDraft: async (_principal, input) => {
+      const { data, error } = await supabase
+        .from('content_drafts')
+        .insert({ workspace_id: input.workspaceId, title: input.title, body: input.body, source_finding_id: input.sourceFindingId ?? null, drafted_by_agent: input.draftedByAgent })
+        .select('id')
+        .single();
+      if (error) throw error;
+      return { id: data.id };
+    },
+
+    submitContentDraftForReview: async (_principal, draftId) => {
+      const { error } = await supabase.from('content_drafts').update({ status: 'in_review' }).eq('id', draftId);
+      if (error) throw error;
+    },
+
+    // ---------- Ads Audience Agent -----------------------------------------------------------
+
+    finalizeAudienceBrief: async (_principal, input) => {
+      const { data, error } = await supabase
+        .from('ad_audience_briefs')
+        .insert({
+          workspace_id: input.workspaceId,
+          business_profile: input.businessProfile,
+          platform: input.platform,
+          hypotheses: input.hypotheses,
+          segments: input.segments,
+          recommended_objective: input.recommendedObjective,
+          recommended_offer: input.recommendedOffer,
+          conversion_signals: input.conversionSignals ?? {},
+        })
+        .select('id, version')
+        .single();
+      if (error) throw error;
+      // finalize immediately (draft -> final) - a second update, since insert always lands as
+      // 'draft' first (the table's own before-trigger enforces this).
+      const { error: finalizeError } = await supabase.from('ad_audience_briefs').update({ status: 'final' }).eq('id', data.id);
+      if (finalizeError) throw finalizeError;
+      return { id: data.id, version: data.version };
     },
   };
 }

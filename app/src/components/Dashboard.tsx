@@ -552,6 +552,156 @@ export default function Dashboard() {
     }
   };
 
+  const runMonitoringTask = async (task: 'check_stale_audits' | 'check_stale_social_publishing') => {
+    if (clientRows.length === 0) {
+      notify('Add a client first');
+      return;
+    }
+    try {
+      const res = await fetch('/api/agents/monitoring', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task, workspaceId: clientRows[0].id }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        notify(body.error || 'Could not run that repair');
+        return;
+      }
+      const failedCount = (body.output?.failedCount as number | undefined) ?? 0;
+      notify(failedCount > 0 ? `Repaired ${failedCount} stuck item(s)` : 'Nothing was stuck — no repair needed');
+    } catch {
+      notify('Could not run that repair — check your connection');
+    }
+  };
+
+  const [agencyReport, setAgencyReport] = useState<string | null>(null);
+  const generateAgencyReport = async () => {
+    try {
+      const res = await fetch('/api/agents/analytics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task: 'compile_agency_report' }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        notify(body.error || 'Could not generate the report');
+        return;
+      }
+      setAgencyReport(body.report as string);
+      notify('Report generated');
+    } catch {
+      notify('Could not generate the report — check your connection');
+    }
+  };
+
+  const draftArticle = async () => {
+    if (clientRows.length === 0) {
+      notify('Add a client first');
+      return;
+    }
+    const typed = window.prompt(`Which client is this for? (${clientRows.map(c => c.name).join(', ')})`)?.trim().toLowerCase();
+    if (!typed) return;
+    const client = clientRows.find(c => c.name.toLowerCase() === typed);
+    if (!client) {
+      notify('No client matches that name');
+      return;
+    }
+    const title = window.prompt('Article title?')?.trim();
+    if (!title) return;
+    const topic = window.prompt('What is the article about?')?.trim();
+    if (!topic) return;
+    try {
+      const res = await fetch('/api/agents/content', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspaceId: client.id, title, topic }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        notify(body.error || 'Could not draft that article');
+        return;
+      }
+      notify('Article drafted for ' + client.name);
+    } catch {
+      notify('Could not draft that article — check your connection');
+    }
+  };
+
+  const [seoAgentResult, setSeoAgentResult] = useState<string | null>(null);
+  const runSeoAuditViaAgent = async () => {
+    if (clientRows.length === 0) {
+      notify('Add a client first');
+      return;
+    }
+    const typed = window.prompt(`Which client is this for? (${clientRows.map(c => c.name).join(', ')})`)?.trim().toLowerCase();
+    if (!typed) return;
+    const client = clientRows.find(c => c.name.toLowerCase() === typed);
+    if (!client) {
+      notify('No client matches that name');
+      return;
+    }
+    setSeoAgentResult('Running…');
+    try {
+      const res = await fetch('/api/agents/seo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task: 'queue_audit', workspaceId: client.id, fixtureSite: 'nova-clinic' }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        setSeoAgentResult(null);
+        notify(body.error || 'Could not run the audit');
+        return;
+      }
+      const run = body.run as { status: string; overall_score: number | null } | null;
+      setSeoAgentResult(run ? `Audit ${run.status} — overall score: ${run.overall_score ?? 'n/a'}` : 'Audit queued');
+      notify('Audit run via agent');
+    } catch {
+      setSeoAgentResult(null);
+      notify('Could not run the audit — check your connection');
+    }
+  };
+
+  const [audienceResult, setAudienceResult] = useState<string | null>(null);
+  const runAudienceResearch = async () => {
+    if (clientRows.length === 0) {
+      notify('Add a client first');
+      return;
+    }
+    const typed = window.prompt(`Which client is this for? (${clientRows.map(c => c.name).join(', ')})`)?.trim().toLowerCase();
+    if (!typed) return;
+    const client = clientRows.find(c => c.name.toLowerCase() === typed);
+    if (!client) {
+      notify('No client matches that name');
+      return;
+    }
+    const industry = window.prompt('Industry? (e.g. restaurant, real estate, transport)')?.trim();
+    if (!industry) return;
+    const product = window.prompt('Main product/service?')?.trim();
+    if (!product) return;
+    try {
+      const res = await fetch('/api/agents/ads-audience', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          task: 'finalize_audience_brief',
+          workspaceId: client.id,
+          businessProfile: { name: client.name, industry, product },
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        notify(body.error || 'Could not research the audience');
+        return;
+      }
+      setAudienceResult(JSON.stringify(body.output, null, 2));
+      notify('Audience brief finalized for ' + client.name);
+    } catch {
+      notify('Could not research the audience — check your connection');
+    }
+  };
+
   // AI Monitor needs two lists (open incidents + recent checks) from one endpoint, so it
   // can't use the single-list useLazyList hook.
   const [healthIncidents, setHealthIncidents] = useState<HealthIncidentRow[]>([]);
@@ -898,6 +1048,7 @@ export default function Dashboard() {
             ) : active === 'Clients' ? (
               clientWorkspacesCard
             ) : active === 'Paid Ads' ? (
+              <>
               <section className="card">
                 <Title
                   text="Ad Campaigns"
@@ -936,6 +1087,15 @@ export default function Dashboard() {
                   ]}
                 />
               </section>
+              <section className="card" style={{ marginTop: 16 }}>
+                <Title text="Audience Research (AI)" />
+                <p style={{ padding: '4px 0 8px', opacity: 0.7 }}>
+                  Real Ads Audience Agent - deterministic, business-agnostic persona/segment research (never a real ad account, never launches or spends anything).
+                </p>
+                <button type="button" className="primary" onClick={runAudienceResearch}>Research audience for a client</button>
+                {audienceResult && <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13, marginTop: 8 }}>{audienceResult}</pre>}
+              </section>
+              </>
             ) : active === 'Leads & CRM' ? (
               <section className="card">
                 <Title
@@ -1040,6 +1200,20 @@ export default function Dashboard() {
             ) : active === 'AI Monitor' ? (
               <>
                 <section className="card">
+                  <Title
+                    text="Maintenance"
+                    right={
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button type="button" className="outline" onClick={() => runMonitoringTask('check_stale_audits')}>Repair stale audits</button>
+                        <button type="button" className="outline" onClick={() => runMonitoringTask('check_stale_social_publishing')}>Repair stale social publishing</button>
+                      </div>
+                    }
+                  />
+                  <p style={{ padding: '4px 0', opacity: 0.7 }}>
+                    Fails any audit or post that has been stuck &quot;running&quot;/&quot;publishing&quot; for more than 15 minutes (a worker crash, not a real block) - via the real Monitoring Agent.
+                  </p>
+                </section>
+                <section className="card">
                   <Title text="Open Incidents" />
                   <SimpleTable
                     label="Open incidents"
@@ -1073,16 +1247,45 @@ export default function Dashboard() {
                 </section>
               </>
             ) : active === 'Reports' ? (
-              <div className="stats">
-                <Stat icon={<Users aria-hidden="true" />} tone="violet" label="Clients" value={String(clientRows.length)} change="" />
-                <Stat
-                  icon={<Check aria-hidden="true" />}
-                  tone="green"
-                  label="Pending Approvals"
-                  value={String(approvals.length)}
-                  change=""
-                />
-              </div>
+              <>
+                <div className="stats">
+                  <Stat icon={<Users aria-hidden="true" />} tone="violet" label="Clients" value={String(clientRows.length)} change="" />
+                  <Stat
+                    icon={<Check aria-hidden="true" />}
+                    tone="green"
+                    label="Pending Approvals"
+                    value={String(approvals.length)}
+                    change=""
+                  />
+                </div>
+
+                <section className="card">
+                  <Title
+                    text="Agency Report (AI)"
+                    right={<button type="button" className="outline" onClick={generateAgencyReport}>Generate report</button>}
+                  />
+                  {agencyReport ? (
+                    <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13 }}>{agencyReport}</pre>
+                  ) : (
+                    <p style={{ padding: '4px 0', opacity: 0.7 }}>Real, read-only summary via the Analytics Agent - SEO audits, leads, campaigns, open incidents.</p>
+                  )}
+                </section>
+
+                <section className="card">
+                  <Title text="Draft an Article (AI)" />
+                  <p style={{ padding: '4px 0 8px', opacity: 0.7 }}>Via the real Content Agent - creates a draft only, never publishes anything.</p>
+                  <button type="button" className="primary" onClick={draftArticle}>Draft article</button>
+                </section>
+
+                <section className="card">
+                  <Title text="Sandbox SEO Audit (AI, via Agent)" />
+                  <p style={{ padding: '4px 0 8px', opacity: 0.7 }}>
+                    Same sample-site engine as the SEO / GEO Audit page, run through the real SEO/GEO Agent instead of directly - proves the agent+permission path end to end.
+                  </p>
+                  <button type="button" className="outline" onClick={runSeoAuditViaAgent}>Run sample audit via agent</button>
+                  {seoAgentResult && <p style={{ padding: '8px 0', opacity: 0.85 }}>{seoAgentResult}</p>}
+                </section>
+              </>
             ) : active === 'Settings' ? (
               <section className="card">
                 <Title text="Account" />
