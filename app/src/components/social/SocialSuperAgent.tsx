@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { CalendarRange, Clapperboard } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { CalendarRange, CheckCircle2, Clapperboard } from 'lucide-react';
 import { Title } from '../dashboard/parts';
 import type { RealClient } from './Composer';
 
@@ -10,10 +10,15 @@ import type { RealClient } from './Composer';
  * scripts, both real (persisted for the calendar, computed for the script), both free - neither
  * calls a paid AI provider. Caption text and flyer images are the paid pieces and already have
  * their own cards/toggles elsewhere.
+ *
+ * Phase G.14 - adds the approval list: every generated calendar slot starts 'pending' and needs
+ * an explicit Approve here. The reminder cron (api/cron/calendar-approval-reminders) nudges
+ * whoever needs to approve one - it never approves anything itself.
  */
 
 interface CalendarSlot { plannedDate: string; theme: string }
 interface VideoScript { hook: string; body: string; callToAction: string; shotList: string[] }
+interface CalendarItem { id: string; planned_date: string; theme: string; approval_status: 'pending' | 'approved' }
 
 export default function SocialSuperAgent({ realClients, notify }: { realClients: RealClient[]; notify: (text: string) => void }) {
   const [topic, setTopic] = useState('');
@@ -26,6 +31,47 @@ export default function SocialSuperAgent({ realClients, notify }: { realClients:
   const [network, setNetwork] = useState<'instagram' | 'tiktok' | 'youtube'>('instagram');
   const [writingScript, setWritingScript] = useState(false);
   const [script, setScript] = useState<VideoScript | null>(null);
+
+  const [approvalClientId, setApprovalClientId] = useState(realClients[0]?.id ?? '');
+  const [calendarItems, setCalendarItems] = useState<CalendarItem[] | null>(null);
+  const [loadingItems, setLoadingItems] = useState(false);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+
+  const loadCalendarItems = async (clientId: string) => {
+    if (!clientId) { setCalendarItems(null); return; }
+    setLoadingItems(true);
+    try {
+      const res = await fetch(`/api/content-calendar?workspaceId=${clientId}`);
+      const body = await res.json();
+      if (!res.ok) { notify(body.error || 'Could not load the calendar'); return; }
+      setCalendarItems(body.items ?? []);
+    } catch {
+      notify('Could not load the calendar — check your connection');
+    } finally {
+      setLoadingItems(false);
+    }
+  };
+
+  useEffect(() => { loadCalendarItems(approvalClientId); }, [approvalClientId]);
+
+  const approveItem = async (id: string) => {
+    setApprovingId(id);
+    try {
+      const res = await fetch(`/api/content-calendar/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approvalStatus: 'approved' }),
+      });
+      const body = await res.json();
+      if (!res.ok) { notify(body.error || 'Could not approve'); return; }
+      setCalendarItems(prev => prev?.map(item => (item.id === id ? { ...item, approval_status: 'approved' } : item)) ?? null);
+      notify('Approved');
+    } catch {
+      notify('Could not approve — check your connection');
+    } finally {
+      setApprovingId(null);
+    }
+  };
 
   const generateCalendar = async () => {
     if (realClients.length === 0) {
@@ -66,6 +112,7 @@ export default function SocialSuperAgent({ realClients, notify }: { realClients:
       }
       setSlots(body.output?.slots ?? []);
       notify(`${days}-day content calendar saved for ${client.name}`);
+      if (client.id === approvalClientId) loadCalendarItems(approvalClientId);
     } catch {
       notify('Could not generate the calendar — check your connection');
     } finally {
@@ -125,6 +172,43 @@ export default function SocialSuperAgent({ realClients, notify }: { realClients:
         {slots && (
           <ul style={{ marginTop: 16, paddingLeft: 18 }}>
             {slots.map((s, i) => <li key={i}><strong>{s.plannedDate}</strong> — {s.theme}</li>)}
+          </ul>
+        )}
+      </section>
+
+      <section className="card">
+        <Title text="Calendar Approvals" />
+        <p style={{ padding: '4px 0 12px', opacity: 0.7 }}>
+          Every generated slot starts pending. Approve it here before its planned date - a reminder is sent
+          (in-app, 12:00–15:00 IST) starting 2 days before, until it's approved.
+        </p>
+        {realClients.length > 0 && (
+          <div className="seo-field">
+            <label htmlFor="approval-client">Client</label>
+            <select id="approval-client" value={approvalClientId} onChange={e => setApprovalClientId(e.target.value)}>
+              {realClients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+        )}
+        {loadingItems ? (
+          <p className="seo-note">Loading…</p>
+        ) : !calendarItems || calendarItems.length === 0 ? (
+          <p className="seo-note">No calendar items yet for this client.</p>
+        ) : (
+          <ul style={{ paddingLeft: 0, listStyle: 'none' }}>
+            {calendarItems.map(item => (
+              <li key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border, #e5e7eb)' }}>
+                <span style={{ flex: 1 }}>
+                  <strong>{item.planned_date}</strong> — {item.theme}{' '}
+                  {item.approval_status === 'approved' ? <em style={{ opacity: 0.7 }}>(approved)</em> : <em style={{ color: '#b45309' }}>(pending)</em>}
+                </span>
+                {item.approval_status === 'pending' && (
+                  <button type="button" className="outline soc-btn" onClick={() => approveItem(item.id)} disabled={approvingId === item.id}>
+                    <CheckCircle2 size={15} aria-hidden="true" /> {approvingId === item.id ? 'Approving…' : 'Approve'}
+                  </button>
+                )}
+              </li>
+            ))}
           </ul>
         )}
       </section>

@@ -81,6 +81,16 @@ type HealthCheckRow = {
   checked_at: string;
   workspaces: WorkspaceRef;
 };
+type NotificationRow = {
+  id: string;
+  workspace_id: string | null;
+  kind: string;
+  title: string;
+  body: string;
+  related_id: string | null;
+  read_at: string | null;
+  created_at: string;
+};
 
 function toClientRow(w: WorkspaceApiRow): ClientRow {
   return {
@@ -134,6 +144,8 @@ export default function Dashboard() {
   const [announcement, setAnnouncement] = useState('');
   const [navAnnouncement, setNavAnnouncement] = useState('');
   const [navOpen, setNavOpen] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationRow[]>([]);
+  const [notifOpen, setNotifOpen] = useState(false);
 
   const toastTimer = useRef<number | undefined>(undefined);
   const announceCount = useRef(0);
@@ -144,6 +156,8 @@ export default function Dashboard() {
   const navToggleRef = useRef<HTMLButtonElement>(null);
   const workspaceButtonRef = useRef<HTMLButtonElement>(null);
   const workspaceWrapRef = useRef<HTMLDivElement>(null);
+  const notifButtonRef = useRef<HTMLButtonElement>(null);
+  const notifWrapRef = useRef<HTMLDivElement>(null);
 
   // The toast stays while the pointer or keyboard focus is on it (WCAG 2.2.1), and screen
   // readers hear every message - a trailing invisible character makes a repeat of the same
@@ -796,7 +810,42 @@ export default function Dashboard() {
     return () => document.removeEventListener('mousedown', onPointer);
   }, [workspaces]);
 
-  const unread = 3;
+  // --- Notifications menu: outside click closes it -------------------------------------
+  useEffect(() => {
+    if (!notifOpen) return;
+    const onPointer = (event: MouseEvent) => {
+      if (!notifWrapRef.current?.contains(event.target as Node)) setNotifOpen(false);
+    };
+    document.addEventListener('mousedown', onPointer);
+    return () => document.removeEventListener('mousedown', onPointer);
+  }, [notifOpen]);
+
+  const unread = notifications.filter(n => !n.read_at).length;
+
+  // Real notifications (Phase G.14) - the calendar-approval reminder cron is what actually
+  // writes these; this just reads and displays them.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/notifications');
+        const body = await res.json();
+        if (!cancelled && res.ok) setNotifications(body.notifications ?? []);
+      } catch {
+        // Silent: the bell just shows nothing new rather than breaking the whole page.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const markNotificationRead = async (id: string) => {
+    setNotifications(prev => prev.map(n => (n.id === id ? { ...n, read_at: new Date().toISOString() } : n)));
+    try {
+      await fetch(`/api/notifications/${id}/read`, { method: 'POST' });
+    } catch {
+      // Best-effort - a failed mark-as-read just means it shows unread again next reload.
+    }
+  };
 
   // Shared between the Overview preview and the standalone Clients page (active === 'Clients')
   // so both read the same live clientRows state instead of drifting apart.
@@ -1039,10 +1088,39 @@ export default function Dashboard() {
               <button type="button" className="primary" onClick={addClient}>
                 <Plus size={16} aria-hidden="true" /> Add client
               </button>
-              <button type="button" className="bell" aria-label={`Notifications, ${unread} unread`}>
-                <Bell size={20} aria-hidden="true" />
-                <i aria-hidden="true">{unread}</i>
-              </button>
+              <div className="workspace-wrap" ref={notifWrapRef}>
+                <button
+                  type="button"
+                  className="bell"
+                  ref={notifButtonRef}
+                  aria-label={`Notifications, ${unread} unread`}
+                  aria-expanded={notifOpen}
+                  aria-controls="notif-menu"
+                  onClick={() => setNotifOpen(o => !o)}
+                >
+                  <Bell size={20} aria-hidden="true" />
+                  <i aria-hidden="true">{unread}</i>
+                </button>
+                {notifOpen && (
+                  <div className="workspace-menu" id="notif-menu" role="group" aria-label="Notifications" style={{ minWidth: 320, maxHeight: 360, overflowY: 'auto' }}>
+                    {notifications.length === 0 ? (
+                      <p style={{ padding: '10px 12px', margin: 0, opacity: 0.7 }}>No notifications yet.</p>
+                    ) : (
+                      notifications.map(n => (
+                        <button
+                          key={n.id}
+                          type="button"
+                          onClick={() => markNotificationRead(n.id)}
+                          style={{ textAlign: 'left', width: '100%', fontWeight: n.read_at ? 400 : 700, whiteSpace: 'normal', lineHeight: 1.3 }}
+                        >
+                          <span style={{ display: 'block' }}>{n.title}</span>
+                          <span style={{ display: 'block', fontWeight: 400, fontSize: 12, opacity: 0.8 }}>{n.body}</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
               <div className="avatar" role="img" aria-label="Admin, online">
                 A<b aria-hidden="true" />
               </div>
