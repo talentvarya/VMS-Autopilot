@@ -68,21 +68,7 @@ export async function GET(request: Request) {
     );
     if (error) {
       console.error('[db error]', error.code ?? '(no code)', error.message);
-      // TEMPORARY DEBUG - identifies the key's FORMAT only (never the secret value itself) and
-      // runs a plain read to see if it's a role-auth problem at all. Revert once diagnosed.
-      const rawKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
-      let keyFormat = 'no SUPABASE_SERVICE_ROLE_KEY set';
-      if (rawKey.startsWith('eyJ')) keyFormat = 'legacy JWT format';
-      else if (rawKey.startsWith('sb_secret_')) keyFormat = 'new secret-key format (correct type)';
-      else if (rawKey.startsWith('sb_publishable_')) keyFormat = 'PUBLISHABLE key was pasted here by mistake!';
-      else if (rawKey) keyFormat = `unrecognized format (length ${rawKey.length})`;
-
-      const selectTest = await service.from('buffer_connections').select('id').limit(1);
-      const selectInfo = selectTest.error
-        ? `SELECT also failed: ${selectTest.error.code} ${selectTest.error.message}`
-        : `SELECT succeeded (${selectTest.data?.length ?? 0} rows)`;
-
-      throw new Error(`[DEBUG] ${error.code ?? '(no code)'} ${error.message} | key format: ${keyFormat} | ${selectInfo}`);
+      throw new Error('Could not save the Buffer connection. Please try again.');
     }
 
     return redirectHome('connected', organization.name);
