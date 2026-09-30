@@ -1,0 +1,17 @@
+# Phase G.13 - automated dependency scanning. Weekly PRs for outdated/vulnerable npm packages
+# in app/ (where package.json lives), plus GitHub Actions themselves if any are ever added.
+# This file alone only configures HOW Dependabot behaves once it's turned on - the one-time
+# switch itself ("Dependabot alerts" + "Dependabot security updates") lives in this repo's own
+# Settings -> Security -> Code security and analysis page, which only the repo owner can enable.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/app"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

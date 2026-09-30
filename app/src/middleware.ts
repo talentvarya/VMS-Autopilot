@@ -2,12 +2,20 @@
  * Phase G.1 - refreshes the Supabase session cookie on every request (the standard SSR
  * pattern) and sends a signed-out visitor to /login. Nothing here grants access to anything -
  * the database's own RLS is still what actually decides what a signed-in person can see or do.
+ *
+ * Phase G.13 - also rate-limits every /api/* request (see lib/api/rate-limit.ts for what this
+ * does and does not protect against).
  */
 
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { clientIp, isRateLimited } from '@/lib/api/rate-limit';
 
 export async function middleware(request: NextRequest) {
+  if (request.nextUrl.pathname.startsWith('/api/') && isRateLimited(clientIp(request))) {
+    return NextResponse.json({ error: 'Too many requests. Please slow down and try again shortly.' }, { status: 429 });
+  }
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
