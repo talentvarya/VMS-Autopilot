@@ -15,6 +15,7 @@ import ChannelsPanel from './social/ChannelsPanel';
 import Composer, { type RealClient } from './social/Composer';
 import FlyerGenerator from './social/FlyerGenerator';
 import PostItem from './social/PostItem';
+import SocialSuperAgent from './social/SocialSuperAgent';
 
 /**
  * Social Publishing (Phase 3) - SANDBOX ONLY.
@@ -194,6 +195,7 @@ export default function SocialModule({ notify, realClients = [], initialPreview 
       </p>
 
       <FlyerGenerator realClients={realClients} notify={notify} />
+      <SocialSuperAgent realClients={realClients} notify={notify} />
 
       {!canCreate && (
         <p className="seo-note">You can look at the channels, the calendar and every post. Your agency writes and schedules posts. Ask them if you would like to write drafts or approve posts.</p>

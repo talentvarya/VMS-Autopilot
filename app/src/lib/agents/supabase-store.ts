@@ -395,6 +395,28 @@ export function createSupabaseAgentStore(supabase: SupabaseClient): AgentStore {
       if (finalizeError) throw finalizeError;
       return { id: data.id, version: data.version };
     },
+
+    // ---------- Social Media Super Agent (calendar only - draft_post/repurpose_blog/
+    // draft_reply all need a real social_channels row, which nothing in this app can create:
+    // social_channels has NO insert grant for `authenticated` at all, on purpose - a real
+    // channel can only ever come from a real OAuth connection, which does not exist here (see
+    // "Connect Buffer", permanently disabled). Calendar planning has no such dependency. ------
+
+    createCalendarItem: async (_principal, input) => {
+      const { data, error } = await supabase
+        .from('social_content_calendar_items')
+        .insert({
+          workspace_id: input.workspaceId,
+          planned_date: input.plannedDate,
+          theme: input.theme,
+          target_networks: input.targetNetworks,
+          generated_by_agent: input.generatedByAgent,
+        })
+        .select('id')
+        .single();
+      if (error) throw error;
+      return { id: data.id };
+    },
   };
 }
 
