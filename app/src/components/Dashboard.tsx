@@ -26,7 +26,7 @@ import { useLazyList } from './dashboard/hooks';
 import { useRouter } from 'next/navigation';
 import { createClient as createBrowserSupabaseClient } from '@/lib/supabase/client';
 
-type WorkspaceApiRow = { id: string; name: string; industry: string | null; kind: string; created_at: string };
+type WorkspaceApiRow = { id: string; name: string; industry: string | null; kind: string; website_url: string | null; created_at: string };
 type WorkspaceRef = { name: string } | null;
 type ApprovalApiRow = {
   id: string;
@@ -104,6 +104,7 @@ function toClientRow(w: WorkspaceApiRow): ClientRow {
     access: 'Limited',
     health: 'Needs Attention',
     channels: [],
+    websiteUrl: w.website_url,
   };
 }
 
@@ -233,11 +234,12 @@ export default function Dashboard() {
   const addClient = async () => {
     const name = window.prompt('New client name?')?.trim();
     if (!name) return;
+    const websiteUrl = window.prompt('Client\'s website (optional - used for real SEO/GEO audits)? Leave blank to skip.')?.trim() || undefined;
     try {
       const res = await fetch('/api/workspaces', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, websiteUrl }),
       });
       const body = await res.json();
       if (!res.ok) {
@@ -267,10 +269,31 @@ export default function Dashboard() {
         notify(body.error || 'Could not rename client');
         return;
       }
-      setClientRows(rows => rows.map(row => (row.id === id ? toClientRow({ ...row, name, industry: row.type, kind: 'client', created_at: '' }) : row)));
+      setClientRows(rows => rows.map(row => (row.id === id ? toClientRow({ id, name, industry: row.type, kind: 'client', website_url: row.websiteUrl, created_at: '' }) : row)));
       notify('Renamed to ' + name);
     } catch {
       notify('Could not rename client — check your connection');
+    }
+  };
+
+  const editClientWebsite = async (id: string, currentUrl: string | null) => {
+    const input = window.prompt('Client\'s website URL (blank to remove)', currentUrl ?? '')?.trim() ?? null;
+    if (input === null) return;
+    try {
+      const res = await fetch(`/api/workspaces/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ websiteUrl: input }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        notify(body.error || 'Could not update the website');
+        return;
+      }
+      setClientRows(rows => rows.map(row => (row.id === id ? { ...row, websiteUrl: body.workspace.website_url } : row)));
+      notify(input ? 'Website saved' : 'Website removed');
+    } catch {
+      notify('Could not update the website — check your connection');
     }
   };
 
@@ -960,6 +983,14 @@ export default function Dashboard() {
                     <button
                       type="button"
                       role="menuitem"
+                      onClick={() => { setOpenClientMenuId(null); editClientWebsite(client.id, client.websiteUrl); }}
+                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', background: 'none', border: 'none', cursor: 'pointer' }}
+                    >
+                      Website
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
                       onClick={() => { setOpenClientMenuId(null); archiveClient(client.id, client.name); }}
                       style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', background: 'none', border: 'none', cursor: 'pointer', color: '#c0392b' }}
                     >
@@ -1152,7 +1183,7 @@ export default function Dashboard() {
               </button>
             </div>
             {active === 'SEO / GEO Audit' ? (
-              <SeoAuditModule notify={notify} />
+              <SeoAuditModule notify={notify} realClients={clientRows.map(c => ({ id: c.id, name: c.name, websiteUrl: c.websiteUrl }))} />
             ) : active === 'Social Publishing' ? (
               <SocialModule notify={notify} realClients={clientRows.map(c => ({ id: c.id, name: c.name }))} />
             ) : active === 'Connected Accounts' ? (

@@ -41,43 +41,8 @@ export interface ClientRow {
   access: string;
   health: string;
   channels: string[];
+  websiteUrl: string | null;
 }
-
-export const initialClients: ClientRow[] = [
-  {
-    id: 'nova-clinic',
-    name: 'Nova Clinic',
-    type: 'Healthcare',
-    initial: 'N',
-    score: 92,
-    ads: 'Active',
-    access: 'Full Access',
-    health: 'Healthy',
-    channels: ['f', 'ig', 'in', 'yt'],
-  },
-  {
-    id: 'bright-homes',
-    name: 'Bright Homes',
-    type: 'Real Estate',
-    initial: 'B',
-    score: 78,
-    ads: 'Paused',
-    access: 'Limited',
-    health: 'Needs Attention',
-    channels: ['ig', 'in', 'tk'],
-  },
-  {
-    id: 'urban-eats',
-    name: 'Urban Eats',
-    type: 'Food & Beverage',
-    initial: 'U',
-    score: 85,
-    ads: 'Active',
-    access: 'Full Access',
-    health: 'Healthy',
-    channels: ['f', 'ig', 'tk', 'yt'],
-  },
-];
 
 export const workspaceOptions = ['Acme Marketing', 'VMS Demo Agency', 'Client Sandbox'];
 

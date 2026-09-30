@@ -7,6 +7,7 @@
 import { NextResponse } from 'next/server';
 import { dbErrorResponse } from '@/lib/api/errors';
 import { createClient } from '@/lib/supabase/server';
+import { UnsafeUrlError, assertSafeUrl } from '@/lib/seo/safe-url';
 
 export async function GET() {
   const supabase = await createClient();
@@ -17,7 +18,7 @@ export async function GET() {
   // workspaces - the query itself does not need to know the agency id.
   const { data, error } = await supabase
     .from('workspaces')
-    .select('id, name, industry, kind, created_at')
+    .select('id, name, industry, kind, website_url, created_at')
     .eq('kind', 'client')
     .is('archived_at', null)
     .order('created_at', { ascending: false });
@@ -36,6 +37,15 @@ export async function POST(request: Request) {
   const industry = typeof body?.industry === 'string' ? body.industry.trim() : null;
   if (!name) return NextResponse.json({ error: 'a client name is required' }, { status: 400 });
 
+  let websiteUrl: string | null = null;
+  if (typeof body?.websiteUrl === 'string' && body.websiteUrl.trim()) {
+    try {
+      websiteUrl = assertSafeUrl(body.websiteUrl.trim()).href;
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof UnsafeUrlError ? `website address: ${err.reason}` : 'website address is invalid' }, { status: 400 });
+    }
+  }
+
   // The caller's own agency workspace - RLS (workspaces_select) already limits this to
   // workspaces the caller actually belongs to.
   const { data: memberships, error: membershipError } = await supabase
@@ -53,8 +63,8 @@ export async function POST(request: Request) {
 
   const { data, error } = await supabase
     .from('workspaces')
-    .insert({ kind: 'client', parent_workspace_id: agencyWorkspaceId, name, industry })
-    .select('id, name, industry, kind, created_at')
+    .insert({ kind: 'client', parent_workspace_id: agencyWorkspaceId, name, industry, website_url: websiteUrl })
+    .select('id, name, industry, kind, website_url, created_at')
     .single();
 
   if (error) return dbErrorResponse(error);

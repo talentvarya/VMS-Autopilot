@@ -1,12 +1,12 @@
 /**
- * Phase G.9 - the SEO/GEO Agent wired for real, through the SAME sandbox fixture engine the
- * SEO/GEO Audit page's own direct call already uses (lib/seo/engine.ts + fixtures) - never a
- * real website (lib/seo/sources.ts's LIVE_AUDITS_ENABLED stays false; see the safety test that
- * scans this folder for network code, tests/seo/safety.test.ts).
+ * Phase G.9 (fixture sites) + Phase G.16 (real websites) - the SEO/GEO Agent wired for real.
  *
- * queue_audit needs a `sites` row (workspace_id, origin, label, business_type) - this route
- * auto-creates or reuses one, restricted to a fixed set of known-fixture origins so this can
- * never be pointed at a real website.
+ * queue_audit needs a `sites` row (workspace_id, origin, label, business_type, source) - this
+ * route auto-creates or reuses one, in one of two ways:
+ *   - `fixtureSite`: one of the 3 built-in sample sites (source='fixture', unchanged since G.9).
+ *   - `useRealWebsite: true`: the caller's client workspace's own `website_url` (source='live') -
+ *     validated again here with assertSafeUrl (defense in depth; the audit engine's own fetcher,
+ *     live-fetch.ts, validates and DNS-pins it a second time before ever connecting).
  */
 
 import { NextResponse } from 'next/server';
@@ -16,6 +16,7 @@ import { runAgent } from '@/lib/agents/orchestrator';
 import { createSupabaseAgentStore, ensureAgentDefinition } from '@/lib/agents/supabase-store';
 import { resolveWorkspaceRole } from '@/lib/agents/resolve-principal';
 import { FIXTURE_SITES } from '@/lib/seo/fixtures';
+import { UnsafeUrlError, assertSafeUrl } from '@/lib/seo/safe-url';
 
 const AGENT_KEY = 'seo_geo_agent';
 const ALLOWED_TOOLS = ['queue_audit', 'explain_findings', 'propose_fix', 'content_brief_handoff'];
@@ -37,22 +38,49 @@ export async function POST(request: Request) {
 
   let input = body;
   if (task === 'queue_audit' && !body.siteId) {
-    const fixtureKey = typeof body.fixtureSite === 'string' ? body.fixtureSite : '';
-    const fixture = FIXTURE_SITES.find(s => s.id === fixtureKey);
-    if (!fixture) return NextResponse.json({ error: 'fixtureSite must be one of the sample sites' }, { status: 400 });
+    if (body.useRealWebsite === true) {
+      const { data: workspace, error: workspaceError } = await supabase.from('workspaces').select('name, website_url').eq('id', workspaceId).maybeSingle();
+      if (workspaceError) return dbErrorResponse(workspaceError);
+      if (!workspace?.website_url) return NextResponse.json({ error: 'this client has no website URL saved yet - add one on the Clients page first' }, { status: 400 });
 
-    const { data: existingSite } = await supabase.from('sites').select('id').eq('workspace_id', workspaceId).eq('origin', fixture.origin).maybeSingle();
-    let siteId = existingSite?.id as string | undefined;
-    if (!siteId) {
-      const { data: newSite, error: siteError } = await supabase
-        .from('sites')
-        .insert({ workspace_id: workspaceId, origin: fixture.origin, label: fixture.label, business_type: fixture.businessType })
-        .select('id')
-        .single();
-      if (siteError) return dbErrorResponse(siteError);
-      siteId = newSite.id;
+      let origin: string;
+      try {
+        origin = assertSafeUrl(workspace.website_url).origin;
+      } catch (err) {
+        return NextResponse.json({ error: err instanceof UnsafeUrlError ? `this client's saved website address is not safe to audit: ${err.reason}` : 'this client\'s saved website address is invalid' }, { status: 400 });
+      }
+
+      const businessType = body.businessType === 'online' ? 'online' : 'local';
+      const { data: existingSite } = await supabase.from('sites').select('id').eq('workspace_id', workspaceId).eq('origin', origin).maybeSingle();
+      let siteId = existingSite?.id as string | undefined;
+      if (!siteId) {
+        const { data: newSite, error: siteError } = await supabase
+          .from('sites')
+          .insert({ workspace_id: workspaceId, origin, label: workspace.name, business_type: businessType, source: 'live' })
+          .select('id')
+          .single();
+        if (siteError) return dbErrorResponse(siteError);
+        siteId = newSite.id;
+      }
+      input = { ...body, siteId };
+    } else {
+      const fixtureKey = typeof body.fixtureSite === 'string' ? body.fixtureSite : '';
+      const fixture = FIXTURE_SITES.find(s => s.id === fixtureKey);
+      if (!fixture) return NextResponse.json({ error: 'fixtureSite must be one of the sample sites, or set useRealWebsite: true' }, { status: 400 });
+
+      const { data: existingSite } = await supabase.from('sites').select('id').eq('workspace_id', workspaceId).eq('origin', fixture.origin).maybeSingle();
+      let siteId = existingSite?.id as string | undefined;
+      if (!siteId) {
+        const { data: newSite, error: siteError } = await supabase
+          .from('sites')
+          .insert({ workspace_id: workspaceId, origin: fixture.origin, label: fixture.label, business_type: fixture.businessType })
+          .select('id')
+          .single();
+        if (siteError) return dbErrorResponse(siteError);
+        siteId = newSite.id;
+      }
+      input = { ...body, siteId };
     }
-    input = { ...body, siteId };
   }
 
   const store = createSupabaseAgentStore(supabase);

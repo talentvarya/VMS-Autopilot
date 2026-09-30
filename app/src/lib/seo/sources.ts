@@ -1,11 +1,17 @@
+import { liveFeaturesConceivable } from '@/lib/config/environment';
 import { FIXTURE_SITES, type FixtureSite } from './fixtures';
+import { fetchLiveSnapshot } from './live-fetch';
 import type { AuditSource, SiteSnapshot } from './types';
 
 /**
  * Where website snapshots come from.
  *
- * Phase 2: ONLY built-in sample sites. Live fetching is switched off - by design and by test -
- * until the owner approves real integrations.
+ * Phase G.16 - live fetching is approved and built (live-fetch.ts), behind the SAME layered
+ * gate every other real-provider feature in this app uses: a compile-time flag AND an
+ * environment-tier check (liveFeaturesConceivable() - development and test can never reach a
+ * live fetch, no matter what this flag says). SSRF protection (safe-url.ts + live-fetch.ts's own
+ * DNS-pinning) is a separate, always-on concern - it applies regardless of which gate gets
+ * changed later.
  */
 
 export interface SnapshotSource {
@@ -14,11 +20,11 @@ export interface SnapshotSource {
 }
 
 /** Fixed at build time. Changing it is a code change that must be reviewed, not a setting. */
-export const LIVE_AUDITS_ENABLED = false as const;
+export const LIVE_AUDITS_ENABLED = true as const;
 
 export class LiveAuditsDisabledError extends Error {
   constructor() {
-    super('Live website audits are switched off. Only the built-in sample sites can be audited until real integrations are approved.');
+    super('Live website audits are switched off in this environment.');
     this.name = 'LiveAuditsDisabledError';
   }
 }
@@ -43,9 +49,18 @@ export class FixtureSource implements SnapshotSource {
   }
 }
 
-export function createSource(kind: AuditSource): SnapshotSource {
+export class LiveSource implements SnapshotSource {
+  readonly kind = 'live' as const;
+
+  async getSnapshot(origin: string): Promise<SiteSnapshot> {
+    return fetchLiveSnapshot(origin);
+  }
+}
+
+export function createSource(kind: AuditSource, overrides?: { liveEnabled?: boolean; env?: NodeJS.ProcessEnv }): SnapshotSource {
   if (kind === 'fixture') return new FixtureSource();
-  // Even if this constant were edited, the live source does not exist yet.
-  if (!LIVE_AUDITS_ENABLED) throw new LiveAuditsDisabledError();
-  throw new LiveAuditsDisabledError();
+  const liveEnabled = overrides?.liveEnabled ?? LIVE_AUDITS_ENABLED;
+  if (!liveEnabled) throw new LiveAuditsDisabledError();
+  if (!liveFeaturesConceivable(overrides?.env)) throw new LiveAuditsDisabledError();
+  return new LiveSource();
 }

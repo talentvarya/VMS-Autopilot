@@ -61,11 +61,18 @@ describe('assertSafeUrl - blocks requests to internal networks', () => {
   });
 });
 
-describe('live audits are switched off in Phase 2', () => {
-  it('has the switch off and refuses to create a live source', () => {
-    expect(LIVE_AUDITS_ENABLED).toBe(false);
+describe('live audits are approved, but only in staging/production - never in dev or test', () => {
+  it('the compile-time switch is on, but this (test) environment still refuses to create a live source', () => {
+    expect(LIVE_AUDITS_ENABLED).toBe(true);
     expect(() => createSource('live')).toThrow(LiveAuditsDisabledError);
     expect(() => createSource('live')).toThrow(/switched off/);
+  });
+
+  it('only creates a real LiveSource once BOTH the flag and the environment tier agree', () => {
+    expect(() => createSource('live', { liveEnabled: false, env: { ...process.env, APP_ENV: 'production' } })).toThrow(LiveAuditsDisabledError);
+    expect(() => createSource('live', { liveEnabled: true, env: { ...process.env, APP_ENV: 'development' } })).toThrow(LiveAuditsDisabledError);
+    const source = createSource('live', { liveEnabled: true, env: { ...process.env, APP_ENV: 'staging' } });
+    expect(source.kind).toBe('live');
   });
 
   it('serves only the built-in sample sites, as copies', async () => {
@@ -80,14 +87,29 @@ describe('live audits are switched off in Phase 2', () => {
     await expect(source.getSnapshot('http://169.254.169.254')).rejects.toThrow(UnknownSampleSiteError);
   });
 
-  it('has no network code at all in the audit folder', async () => {
+  // live-fetch.ts is the ONE reviewed file allowed to contain network code (it fetches real
+  // client websites, read-only, behind the gate above). Every other file in lib/seo must still
+  // have none at all - a change anywhere else that reaches for `fetch` fails this test.
+  it('has no network code outside the one reviewed live-fetch module', async () => {
     const { readdirSync, readFileSync } = await import('node:fs');
     const { join } = await import('node:path');
     const dir = join(__dirname, '..', '..', 'src', 'lib', 'seo');
-    for (const file of readdirSync(dir).filter((f) => f.endsWith('.ts'))) {
+    for (const file of readdirSync(dir).filter((f) => f.endsWith('.ts') && f !== 'live-fetch.ts')) {
       const code = readFileSync(join(dir, file), 'utf8').replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
       expect(code, file).not.toMatch(/\bfetch\s*\(|XMLHttpRequest|node:https?|node:net|node:dns|WebSocket|child_process/);
     }
+  });
+
+  // live-fetch.ts itself must still visibly do the two things its own doc comment promises:
+  // validate the URL, then resolve-and-pin the DNS address before ever connecting.
+  it('the live-fetch module validates the URL and pins a DNS-resolved address before connecting', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const code = readFileSync(join(__dirname, '..', '..', 'src', 'lib', 'seo', 'live-fetch.ts'), 'utf8');
+    expect(code).toContain('assertSafeUrl');
+    expect(code).toMatch(/dns\.lookup/);
+    expect(code).toContain('isPrivateIp');
+    expect(code).toMatch(/connect:\s*{\s*lookup/);
   });
 });
 

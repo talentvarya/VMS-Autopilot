@@ -292,14 +292,15 @@ export function createSupabaseAgentStore(supabase: SupabaseClient): AgentStore {
     },
 
     // ---------- SEO/GEO Agent --------------------------------------------------------------
-    // Sandbox-only (createSource('fixture')) - the exact same safety boundary the SEO/GEO Audit
-    // page's own direct engine call already respects. Real website audits stay switched off
-    // (src/lib/seo/sources.ts, LIVE_AUDITS_ENABLED) until that is separately reviewed.
+    // Phase G.16 - uses whichever SnapshotSource the site itself is marked with (site.source,
+    // set once when the site row is created - see /api/agents/seo/route.ts). A 'fixture' site
+    // always reads the built-in sample; a 'live' site goes through the safe, DNS-pinned fetcher
+    // (src/lib/seo/live-fetch.ts), gated by LIVE_AUDITS_ENABLED + the environment tier either way.
 
     queueAudit: async (_principal, input) => {
       const service = createServiceClient();
 
-      const { data: site, error: siteError } = await service.from('sites').select('origin, business_type').eq('id', input.siteId).maybeSingle();
+      const { data: site, error: siteError } = await service.from('sites').select('origin, business_type, source').eq('id', input.siteId).maybeSingle();
       if (siteError) throw siteError;
       if (!site) throw new Error('that site was not found');
 
@@ -314,7 +315,7 @@ export function createSupabaseAgentStore(supabase: SupabaseClient): AgentStore {
       if (!claimed || claimed.length === 0) return { runId: run.id };
 
       try {
-        const snapshot = await createSource('fixture').getSnapshot(site.origin);
+        const snapshot = await createSource(site.source as 'fixture' | 'live').getSnapshot(site.origin);
         const result = runAudit(snapshot, { businessType: site.business_type as 'local' | 'online' });
         if (result.findings.length > 0) {
           const { error: findingsError } = await service.from('audit_findings').insert(
