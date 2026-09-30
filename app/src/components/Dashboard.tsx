@@ -120,6 +120,15 @@ function timeAgo(iso: string): string {
   return days + (days === 1 ? ' day ago' : ' days ago');
 }
 
+// The real current month, e.g. "Sep 1, 2026 - Sep 30, 2026" - replaces a hardcoded "Apr 1,
+// 2025 - Apr 30, 2025" that never changed no matter what today's date actually was.
+function currentMonthRange(now = new Date()): string {
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return `${fmt(start)} – ${fmt(end)}`;
+}
+
 const approvalKind = (module: string) =>
   module === 'paid_ads' ? 'ads' : module === 'social' ? 'post' : 'domain';
 
@@ -1139,7 +1148,7 @@ export default function Dashboard() {
               )}
               <h2 id="page-heading">{active === 'Overview' ? 'Agency Overview' : active}</h2>
               <button type="button" className="date">
-                <CalendarDays size={16} aria-hidden="true" /> Apr 1, 2025 – Apr 30, 2025{' '}
+                <CalendarDays size={16} aria-hidden="true" /> {currentMonthRange()}{' '}
                 <ChevronDown size={15} aria-hidden="true" />
               </button>
             </div>
