@@ -26,7 +26,14 @@ export async function GET(request: Request) {
   const state = searchParams.get('state');
   const providerError = searchParams.get('error_description') || searchParams.get('error');
   if (providerError) return redirectHome('error', providerError);
-  if (!code || !state) return redirectHome('error', 'Buffer did not send back a code');
+  if (!code || !state) {
+    // Diagnostic detail for whatever Buffer actually sent, since this exact shape hasn't been
+    // exercised against a real Buffer account before - the param NAMES are safe to show (no
+    // values, in case a real code/token ever ends up somewhere unexpected).
+    const receivedKeys = Array.from(searchParams.keys()).join(', ') || '(none)';
+    console.error('[buffer callback] missing code/state - received params:', receivedKeys);
+    return redirectHome('error', `Buffer did not send back a code (received: ${receivedKeys})`);
+  }
 
   let saved: { state: string; codeVerifier: string; workspaceId: string; redirectUri: string };
   try {
