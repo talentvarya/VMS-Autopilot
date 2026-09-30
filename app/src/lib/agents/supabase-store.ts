@@ -344,8 +344,15 @@ export function createSupabaseAgentStore(supabase: SupabaseClient): AgentStore {
             counts: result.counts,
           })
           .eq('id', run.id);
-      } catch {
-        await service.from('audit_runs').update({ status: 'failed', finished_at: new Date().toISOString(), error: 'The audit could not be completed. Please try again, or ask your agency.' }).eq('id', run.id);
+      } catch (err) {
+        // TEMPORARY DEBUG - reveal the real cause once, then revert to the safe generic message.
+        let detail: string;
+        if (err instanceof Error) detail = `${err.name}: ${err.message}`;
+        else if (err && typeof err === 'object') {
+          const e = err as Record<string, unknown>;
+          detail = `${String(e.code ?? '(no code)')}: ${String(e.message ?? JSON.stringify(e))}`;
+        } else detail = String(err);
+        await service.from('audit_runs').update({ status: 'failed', finished_at: new Date().toISOString(), error: `[DEBUG] ${detail}`.replace(/\s+/g, ' ').slice(0, 300) }).eq('id', run.id);
       }
       return { runId: run.id };
     },
