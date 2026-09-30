@@ -68,20 +68,21 @@ export async function GET(request: Request) {
     );
     if (error) {
       console.error('[db error]', error.code ?? '(no code)', error.message);
-      // TEMPORARY DEBUG - decodes only the JWT's `role`/`ref` claims (never the secret itself)
-      // to check whether the server is actually authenticating as service_role. Revert once
-      // diagnosed.
-      let keyInfo = 'no SUPABASE_SERVICE_ROLE_KEY set';
-      const rawKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-      if (rawKey) {
-        try {
-          const payload = JSON.parse(Buffer.from(rawKey.split('.')[1], 'base64url').toString('utf8'));
-          keyInfo = `role=${payload.role ?? '(none)'} ref=${payload.ref ?? '(none)'} iss=${payload.iss ?? '(none)'}`;
-        } catch {
-          keyInfo = `key present but not a decodable JWT (length ${rawKey.length})`;
-        }
-      }
-      throw new Error(`[DEBUG] Could not save the Buffer connection: ${error.code ?? '(no code)'} ${error.message} | key: ${keyInfo}`);
+      // TEMPORARY DEBUG - identifies the key's FORMAT only (never the secret value itself) and
+      // runs a plain read to see if it's a role-auth problem at all. Revert once diagnosed.
+      const rawKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+      let keyFormat = 'no SUPABASE_SERVICE_ROLE_KEY set';
+      if (rawKey.startsWith('eyJ')) keyFormat = 'legacy JWT format';
+      else if (rawKey.startsWith('sb_secret_')) keyFormat = 'new secret-key format (correct type)';
+      else if (rawKey.startsWith('sb_publishable_')) keyFormat = 'PUBLISHABLE key was pasted here by mistake!';
+      else if (rawKey) keyFormat = `unrecognized format (length ${rawKey.length})`;
+
+      const selectTest = await service.from('buffer_connections').select('id').limit(1);
+      const selectInfo = selectTest.error
+        ? `SELECT also failed: ${selectTest.error.code} ${selectTest.error.message}`
+        : `SELECT succeeded (${selectTest.data?.length ?? 0} rows)`;
+
+      throw new Error(`[DEBUG] ${error.code ?? '(no code)'} ${error.message} | key format: ${keyFormat} | ${selectInfo}`);
     }
 
     return redirectHome('connected', organization.name);
