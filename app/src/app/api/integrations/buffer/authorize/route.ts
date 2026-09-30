@@ -32,6 +32,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "only an Admin can connect a client's Buffer account" }, { status: 403 });
   }
 
+  if (!process.env.BUFFER_CLIENT_ID) {
+    return NextResponse.json(
+      { error: 'Buffer is not set up yet on this deployment - BUFFER_CLIENT_ID is missing. Register a Buffer Developer App and add BUFFER_CLIENT_ID/BUFFER_CLIENT_SECRET to Vercel first.' },
+      { status: 503 },
+    );
+  }
+
   const codeVerifier = generateCodeVerifier();
   const state = generateState();
   const redirectUri = `${origin}/api/integrations/buffer/callback`;
