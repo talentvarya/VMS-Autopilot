@@ -173,7 +173,7 @@ export interface BufferChannel {
 export async function fetchChannels(accessToken: string, organizationId: string): Promise<BufferChannel[]> {
   const data = await graphql<{ channels: BufferChannel[] }>(
     accessToken,
-    `query($organizationId: ID!) { channels(input: { organizationId: $organizationId }) { id name displayName service avatar isQueuePaused } }`,
+    `query($organizationId: OrganizationId!) { channels(input: { organizationId: $organizationId }) { id name displayName service avatar isQueuePaused } }`,
     { organizationId },
   );
   return data.channels;
@@ -230,7 +230,7 @@ export async function fetchAggregatedMetrics(
 ): Promise<{ metrics: BufferMetric[]; metricsUpdatedAt: string | null }> {
   const data = await graphql<{ aggregatedPostMetrics: { metrics: BufferMetric[]; metricsUpdatedAt: string | null } }>(
     accessToken,
-    `query($organizationId: ID!, $channelIds: [ID!]!, $startDateTime: DateTime!, $endDateTime: DateTime!) {
+    `query($organizationId: OrganizationId!, $channelIds: [ID!]!, $startDateTime: DateTime!, $endDateTime: DateTime!) {
       aggregatedPostMetrics(input: { organizationId: $organizationId, channelIds: $channelIds, startDateTime: $startDateTime, endDateTime: $endDateTime }) {
         metrics { type value unit }
         metricsUpdatedAt
