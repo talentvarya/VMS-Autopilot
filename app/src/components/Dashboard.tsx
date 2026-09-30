@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-react';
 import ConnectedAccounts from './ConnectedAccounts';
+import SearchConsoleConnect from './SearchConsoleConnect';
 import SeoAuditModule from './SeoAuditModule';
 import SocialModule from './SocialModule';
 import { Approval, SimpleTable, Stat, Timeline, Title } from './dashboard/parts';
@@ -1157,7 +1158,10 @@ export default function Dashboard() {
             ) : active === 'Social Publishing' ? (
               <SocialModule notify={notify} realClients={clientRows.map(c => ({ id: c.id, name: c.name }))} />
             ) : active === 'Connected Accounts' ? (
-              <ConnectedAccounts notify={notify} realClients={clientRows.map(c => ({ id: c.id, name: c.name }))} />
+              <>
+                <ConnectedAccounts notify={notify} realClients={clientRows.map(c => ({ id: c.id, name: c.name }))} />
+                <SearchConsoleConnect notify={notify} realClients={clientRows.map(c => ({ id: c.id, name: c.name }))} />
+              </>
             ) : active === 'Clients' ? (
               clientWorkspacesCard
             ) : active === 'Paid Ads' ? (
