@@ -21,7 +21,7 @@ import ConnectedAccounts from './ConnectedAccounts';
 import SeoAuditModule from './SeoAuditModule';
 import SocialModule from './SocialModule';
 import { Approval, SimpleTable, Stat, Timeline, Title } from './dashboard/parts';
-import { channelNames, nav, workspaceOptions, type ClientRow } from './dashboard/data';
+import { channelNames, nav, type ClientRow } from './dashboard/data';
 import { useLazyList } from './dashboard/hooks';
 import { useRouter } from 'next/navigation';
 import { createClient as createBrowserSupabaseClient } from '@/lib/supabase/client';
@@ -135,8 +135,7 @@ export default function Dashboard() {
   const router = useRouter();
   const [active, setActive] = useState('Overview');
   const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [workspace, setWorkspace] = useState('Acme Marketing');
-  const [workspaces, setWorkspaces] = useState(false);
+  const [agencyName, setAgencyName] = useState<string | null>(null);
   const [clientRows, setClientRows] = useState<ClientRow[]>([]);
   const [clientsLoaded, setClientsLoaded] = useState(false);
   const [approvals, setApprovals] = useState<ApprovalApiRow[]>([]);
@@ -156,8 +155,6 @@ export default function Dashboard() {
   const mainRef = useRef<HTMLElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
   const navToggleRef = useRef<HTMLButtonElement>(null);
-  const workspaceButtonRef = useRef<HTMLButtonElement>(null);
-  const workspaceWrapRef = useRef<HTMLDivElement>(null);
   const notifButtonRef = useRef<HTMLButtonElement>(null);
   const notifWrapRef = useRef<HTMLDivElement>(null);
 
@@ -824,16 +821,6 @@ export default function Dashboard() {
     }
   };
 
-  // --- Workspace menu: Escape and outside click close it ------------------------------
-  useEffect(() => {
-    if (!workspaces) return;
-    const onPointer = (event: MouseEvent) => {
-      if (!workspaceWrapRef.current?.contains(event.target as Node)) setWorkspaces(false);
-    };
-    document.addEventListener('mousedown', onPointer);
-    return () => document.removeEventListener('mousedown', onPointer);
-  }, [workspaces]);
-
   // --- Notifications menu: outside click closes it -------------------------------------
   useEffect(() => {
     if (!notifOpen) return;
@@ -845,6 +832,22 @@ export default function Dashboard() {
   }, [notifOpen]);
 
   const unread = notifications.filter(n => !n.read_at).length;
+
+  // Real agency name (Phase G.17) - replaces a hardcoded, fake 3-item "switch workspace" menu.
+  // A person belongs to exactly one agency here, so there is nothing real to switch between.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/agency');
+        const body = await res.json();
+        if (!cancelled && res.ok) setAgencyName(body.name);
+      } catch {
+        // Silent: the header just keeps showing "…" rather than breaking the whole page.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Real notifications (Phase G.14) - the calendar-approval reminder cron is what actually
   // writes these; this just reads and displays them.
@@ -1076,52 +1079,10 @@ export default function Dashboard() {
               <p>Here’s what’s happening with your agency today.</p>
             </div>
             <div className="actions">
-              <div
-                className="workspace-wrap"
-                ref={workspaceWrapRef}
-                onBlur={event => {
-                  const next = event.relatedTarget as Node | null;
-                  // Ignore a null target: Safari does not focus buttons on click.
-                  if (workspaces && next && !event.currentTarget.contains(next)) setWorkspaces(false);
-                }}
-                onKeyDown={event => {
-                  if (event.key === 'Escape' && workspaces) {
-                    setWorkspaces(false);
-                    workspaceButtonRef.current?.focus();
-                  }
-                }}
-              >
-                <button
-                  type="button"
-                  className="workspace"
-                  ref={workspaceButtonRef}
-                  aria-expanded={workspaces}
-                  aria-controls="workspace-menu"
-                  onClick={() => setWorkspaces(!workspaces)}
-                >
-                  <ShieldCheck size={17} aria-hidden="true" />
-                  {workspace}
-                  <ChevronDown size={15} aria-hidden="true" />
-                </button>
-                {workspaces && (
-                  <div className="workspace-menu" id="workspace-menu" role="group" aria-label="Choose workspace">
-                    {workspaceOptions.map(item => (
-                      <button
-                        type="button"
-                        key={item}
-                        aria-current={item === workspace ? 'true' : undefined}
-                        onClick={() => {
-                          setWorkspace(item);
-                          setWorkspaces(false);
-                          workspaceButtonRef.current?.focus();
-                        }}
-                      >
-                        {item}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <span className="workspace" aria-label={`Agency: ${agencyName ?? 'loading'}`}>
+                <ShieldCheck size={17} aria-hidden="true" />
+                {agencyName ?? '…'}
+              </span>
               <button type="button" className="primary" onClick={addClient}>
                 <Plus size={16} aria-hidden="true" /> Add client
               </button>
@@ -1158,9 +1119,9 @@ export default function Dashboard() {
                   </div>
                 )}
               </div>
-              <div className="avatar" role="img" aria-label="Admin, online">
-                A<b aria-hidden="true" />
-              </div>
+              <button type="button" className="avatar" aria-label="Account settings" onClick={() => selectModule('Settings')} style={{ cursor: 'pointer', border: 'none' }}>
+                {(agencyName ?? userEmail ?? 'A').charAt(0).toUpperCase()}<b aria-hidden="true" />
+              </button>
             </div>
           </header>
           <section className="content" aria-labelledby="page-heading">

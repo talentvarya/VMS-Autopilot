@@ -44,8 +44,6 @@ export interface ClientRow {
   websiteUrl: string | null;
 }
 
-export const workspaceOptions = ['Acme Marketing', 'VMS Demo Agency', 'Client Sandbox'];
-
 /** The channel chips show a short code; screen readers get the full network name. */
 export const channelNames: Record<string, string> = {
   f: 'Facebook',
