@@ -345,10 +345,20 @@ export function createSupabaseAgentStore(supabase: SupabaseClient): AgentStore {
           })
           .eq('id', run.id);
       } catch (err) {
-        // TEMPORARY DEBUG - reveal the real cause once, then revert to the safe generic message.
+        // TEMPORARY DEBUG - "fetch failed" is a wrapper; walk .cause to find the real reason.
         let detail: string;
-        if (err instanceof Error) detail = `${err.name}: ${err.message}`;
-        else if (err && typeof err === 'object') {
+        if (err instanceof Error) {
+          const parts = [`${err.name}: ${err.message}`];
+          let cause: unknown = (err as { cause?: unknown }).cause;
+          let depth = 0;
+          while (cause && depth < 4) {
+            if (cause instanceof Error) parts.push(`caused by ${cause.name}: ${cause.message}`);
+            else parts.push(`caused by ${JSON.stringify(cause)}`);
+            cause = cause instanceof Error ? (cause as { cause?: unknown }).cause : undefined;
+            depth++;
+          }
+          detail = parts.join(' | ');
+        } else if (err && typeof err === 'object') {
           const e = err as Record<string, unknown>;
           detail = `${String(e.code ?? '(no code)')}: ${String(e.message ?? JSON.stringify(e))}`;
         } else detail = String(err);
