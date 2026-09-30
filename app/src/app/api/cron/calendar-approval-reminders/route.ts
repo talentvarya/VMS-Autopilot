@@ -1,10 +1,17 @@
 /**
- * Phase G.14 - a Vercel Cron job (see vercel.json, runs every 30 minutes) that reminds an
- * agency's Admins to approve a real Content Calendar slot before it's due. For each calendar
- * item still 'pending' whose planned_date is exactly 2 days away, every Admin of that client's
- * agency gets an in-app notification - once per hour, only between 12:00 and 15:00 IST (the
- * window the owner asked for). This job only ever reads calendar items and writes
- * notifications; it never approves anything and never touches a real post.
+ * Phase G.14 - a Vercel Cron job (see vercel.json) that reminds an agency's Admins to approve a
+ * real Content Calendar slot before it's due. For each calendar item still 'pending' whose
+ * planned_date is exactly 2 days away, every Admin of that client's agency gets an in-app
+ * notification. This job only ever reads calendar items and writes notifications; it never
+ * approves anything and never touches a real post.
+ *
+ * Runs once daily (~12:00 IST, Vercel's own Hobby-plan limit - see the schedule's own comment
+ * in vercel.json) rather than hourly between 12:00-15:00 as first asked for: a Hobby account's
+ * cron jobs can only run once a day at all, so an hourly window needs a Pro plan instead - a
+ * cost decision for the account owner, not made here. The 12:00-15:00/hourly window logic is
+ * kept below (harmless on Hobby, since the single daily run always lands inside it) so it starts
+ * working exactly as originally asked for the moment the project is ever upgraded to Pro and the
+ * schedule in vercel.json is changed back to an every-30-minutes expression.
  */
 
 import { NextResponse } from 'next/server';

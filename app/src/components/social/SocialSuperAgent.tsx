@@ -180,7 +180,7 @@ export default function SocialSuperAgent({ realClients, notify }: { realClients:
         <Title text="Calendar Approvals" />
         <p style={{ padding: '4px 0 12px', opacity: 0.7 }}>
           Every generated slot starts pending. Approve it here before its planned date - a reminder is sent
-          (in-app, 12:00–15:00 IST) starting 2 days before, until it's approved.
+          (in-app, ~12:00 IST daily) starting 2 days before, until it's approved.
         </p>
         {realClients.length > 0 && (
           <div className="seo-field">
