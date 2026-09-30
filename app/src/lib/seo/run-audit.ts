@@ -34,15 +34,7 @@ export const GENERIC_AUDIT_ERROR = 'The audit could not be completed. Please try
 
 export function safeErrorMessage(error: unknown): string {
   if (error instanceof Error && CLIENT_SAFE_ERRORS.has(error.name)) return error.message.replace(/\s+/g, ' ').slice(0, 300);
-  // TEMPORARY DEBUG - live audits have never been exercised against a real site before; show the
-  // real cause once to diagnose (handles plain objects like PostgrestError too, not just Error
-  // instances), then revert to GENERIC_AUDIT_ERROR.
-  if (error instanceof Error) return `[DEBUG] ${error.name}: ${error.message}`.replace(/\s+/g, ' ').slice(0, 300);
-  if (error && typeof error === 'object') {
-    const e = error as Record<string, unknown>;
-    return `[DEBUG] ${String(e.code ?? '(no code)')}: ${String(e.message ?? JSON.stringify(e))}`.replace(/\s+/g, ' ').slice(0, 300);
-  }
-  return `[DEBUG] non-object error: ${String(error)}`.slice(0, 300) || GENERIC_AUDIT_ERROR;
+  return GENERIC_AUDIT_ERROR;
 }
 
 export async function executeAuditRun(

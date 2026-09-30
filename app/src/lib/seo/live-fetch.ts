@@ -20,6 +20,7 @@
  */
 
 import { promises as dns } from 'node:dns';
+import type { LookupFunction } from 'node:net';
 import { Agent, fetch as undiciFetch, type Dispatcher } from 'undici';
 import { assertSafeUrl, UnsafeUrlError } from './safe-url';
 import type { SiteSnapshot } from './types';
@@ -70,9 +71,17 @@ async function resolvePinnedAddress(hostname: string): Promise<{ address: string
 function pinnedAgent(address: string, family: 4 | 6): Agent {
   return new Agent({
     connect: {
-      lookup: (_hostname: string, _opts: unknown, callback: (err: Error | null, address: string, family: number) => void) => {
-        callback(null, address, family);
-      },
+      // Node's own lookup can be called two ways: lookup(hostname, callback) or
+      // lookup(hostname, options, callback) - and when Happy Eyeballs asks for `{ all: true }`,
+      // it expects back an array of { address, family }, not the plain (address, family) pair.
+      // Always answering in the old 3-arg shape made the `all` caller read `address` as its
+      // addresses array and fail with "Invalid IP address: undefined".
+      lookup: ((_hostname, optsOrCallback, maybeCallback) => {
+        const callback = typeof optsOrCallback === 'function' ? optsOrCallback : maybeCallback!;
+        const wantsAll = typeof optsOrCallback === 'object' && optsOrCallback !== null && optsOrCallback.all === true;
+        if (wantsAll) callback(null, [{ address, family }]);
+        else callback(null, address, family);
+      }) as LookupFunction,
     },
   });
 }
