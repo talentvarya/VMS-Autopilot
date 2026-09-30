@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { dbErrorResponse } from '@/lib/api/errors';
 import { createClient } from '@/lib/supabase/server';
 import { createServiceClient } from '@/lib/supabase/service';
 import { resolveWorkspaceRole } from '@/lib/agents/resolve-principal';
@@ -18,7 +19,7 @@ export async function POST(request: Request) {
 
   const service = createServiceClient();
   const { error } = await service.from('buffer_connections').delete().eq('workspace_id', workspaceId);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, 500);
 
   return NextResponse.json({ ok: true });
 }

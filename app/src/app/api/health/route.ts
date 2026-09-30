@@ -5,6 +5,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { dbErrorResponse } from '@/lib/api/errors';
 import { createClient } from '@/lib/supabase/server';
 
 export async function GET() {
@@ -25,7 +26,7 @@ export async function GET() {
       .limit(20),
   ]);
 
-  if (incidents.error) return NextResponse.json({ error: incidents.error.message }, { status: 400 });
-  if (checks.error) return NextResponse.json({ error: checks.error.message }, { status: 400 });
+  if (incidents.error) return dbErrorResponse(incidents.error);
+  if (checks.error) return dbErrorResponse(checks.error);
   return NextResponse.json({ incidents: incidents.data, checks: checks.data });
 }

@@ -5,6 +5,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { dbErrorResponse } from '@/lib/api/errors';
 import { createClient } from '@/lib/supabase/server';
 
 export async function GET() {
@@ -21,7 +22,7 @@ export async function GET() {
     .is('archived_at', null)
     .order('created_at', { ascending: false });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) return dbErrorResponse(error);
   return NextResponse.json({ workspaces: data });
 }
 
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
     .eq('workspaces.kind', 'agency')
     .limit(1);
 
-  if (membershipError) return NextResponse.json({ error: membershipError.message }, { status: 400 });
+  if (membershipError) return dbErrorResponse(membershipError);
   const agencyWorkspaceId = memberships?.[0]?.workspace_id;
   if (!agencyWorkspaceId) {
     return NextResponse.json({ error: 'no agency workspace found for this account yet - see the one-time setup step' }, { status: 400 });
@@ -56,6 +57,6 @@ export async function POST(request: Request) {
     .select('id, name, industry, kind, created_at')
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) return dbErrorResponse(error);
   return NextResponse.json({ workspace: data }, { status: 201 });
 }

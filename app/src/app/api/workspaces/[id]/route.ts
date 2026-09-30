@@ -5,6 +5,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { dbErrorResponse } from '@/lib/api/errors';
 import { createClient } from '@/lib/supabase/server';
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -29,6 +30,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     .select('id, name, industry, kind, created_at')
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) return dbErrorResponse(error);
   return NextResponse.json({ workspace: data });
 }

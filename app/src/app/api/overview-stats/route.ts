@@ -5,6 +5,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { dbErrorResponse } from '@/lib/api/errors';
 import { createClient } from '@/lib/supabase/server';
 
 export async function GET() {
@@ -27,10 +28,10 @@ export async function GET() {
       .limit(5),
   ]);
 
-  if (scheduledPosts.error) return NextResponse.json({ error: scheduledPosts.error.message }, { status: 400 });
-  if (leadsThisMonth.error) return NextResponse.json({ error: leadsThisMonth.error.message }, { status: 400 });
-  if (healthChecks.error) return NextResponse.json({ error: healthChecks.error.message }, { status: 400 });
-  if (recentActivity.error) return NextResponse.json({ error: recentActivity.error.message }, { status: 400 });
+  if (scheduledPosts.error) return dbErrorResponse(scheduledPosts.error);
+  if (leadsThisMonth.error) return dbErrorResponse(leadsThisMonth.error);
+  if (healthChecks.error) return dbErrorResponse(healthChecks.error);
+  if (recentActivity.error) return dbErrorResponse(recentActivity.error);
 
   const checks = healthChecks.data ?? [];
   const healthScore = checks.length === 0 ? null : Math.round((checks.filter(c => c.status === 'pass').length / checks.length) * 100);

@@ -4,6 +4,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { dbErrorResponse } from '@/lib/api/errors';
 import { createClient } from '@/lib/supabase/server';
 
 export async function GET() {
@@ -16,7 +17,7 @@ export async function GET() {
     .select('id, workspace_id, source, name, contact, status, created_at, workspaces(name)')
     .order('created_at', { ascending: false });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) return dbErrorResponse(error);
   return NextResponse.json({ rows: data });
 }
 
@@ -41,6 +42,6 @@ export async function POST(request: Request) {
     .select('id, workspace_id, source, name, contact, status, created_at, workspaces(name)')
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) return dbErrorResponse(error);
   return NextResponse.json({ row: data }, { status: 201 });
 }

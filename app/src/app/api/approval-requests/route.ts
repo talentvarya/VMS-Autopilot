@@ -6,6 +6,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { dbErrorResponse } from '@/lib/api/errors';
 import { createClient } from '@/lib/supabase/server';
 
 export async function GET() {
@@ -19,7 +20,7 @@ export async function GET() {
     .eq('status', 'pending')
     .order('created_at', { ascending: false });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) return dbErrorResponse(error);
   return NextResponse.json({ approvals: data });
 }
 
@@ -40,6 +41,6 @@ export async function PATCH(request: Request) {
     .select('id, status')
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) return dbErrorResponse(error);
   return NextResponse.json({ approval: data });
 }

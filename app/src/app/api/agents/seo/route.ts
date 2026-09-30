@@ -10,6 +10,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { dbErrorResponse } from '@/lib/api/errors';
 import { createClient } from '@/lib/supabase/server';
 import { runAgent } from '@/lib/agents/orchestrator';
 import { createSupabaseAgentStore, ensureAgentDefinition } from '@/lib/agents/supabase-store';
@@ -48,7 +49,7 @@ export async function POST(request: Request) {
         .insert({ workspace_id: workspaceId, origin: fixture.origin, label: fixture.label, business_type: fixture.businessType })
         .select('id')
         .single();
-      if (siteError) return NextResponse.json({ error: siteError.message }, { status: 400 });
+      if (siteError) return dbErrorResponse(siteError);
       siteId = newSite.id;
     }
     input = { ...body, siteId };

@@ -5,6 +5,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { dbErrorResponse } from '@/lib/api/errors';
 import { createClient } from '@/lib/supabase/server';
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -17,6 +18,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (body?.status !== 'in_review') return NextResponse.json({ error: 'only submitting for review is supported here' }, { status: 400 });
 
   const { data, error } = await supabase.from('website_projects').update({ status: 'in_review' }).eq('id', id).select('id, status').single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) return dbErrorResponse(error);
   return NextResponse.json({ project: data });
 }

@@ -59,7 +59,10 @@ export async function GET(request: Request) {
       },
       { onConflict: 'workspace_id' },
     );
-    if (error) throw new Error(error.message);
+    if (error) {
+      console.error('[db error]', error.code ?? '(no code)', error.message);
+      throw new Error('Could not save the Buffer connection. Please try again.');
+    }
 
     return redirectHome('connected', organization.name);
   } catch (err) {
