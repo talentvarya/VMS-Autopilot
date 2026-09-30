@@ -67,7 +67,6 @@ export async function POST(request: Request) {
     .select('id, name, industry, kind, website_url, created_at')
     .single();
 
-  // TEMPORARY DEBUG - remove once the "no permission" client-creation issue is diagnosed.
-  if (error) return NextResponse.json({ error: `[DEBUG] ${error.code ?? '(no code)'}: ${error.message}`, hint: error.hint ?? null, details: error.details ?? null }, { status: 400 });
+  if (error) return dbErrorResponse(error);
   return NextResponse.json({ workspace: data }, { status: 201 });
 }
