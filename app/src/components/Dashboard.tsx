@@ -203,6 +203,19 @@ export default function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Picks up the redirect back from /api/integrations/search-console/callback (real Google
+  // Search Console OAuth, Phase G.19) and shows the result as a toast, same pattern as Buffer.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get('searchConsole');
+    if (!status) return;
+    const message = params.get('searchConsoleMessage') ?? '';
+    notify(status === 'connected' ? `Search Console connected (${message})` : `Search Console connection failed: ${message}`);
+    setActive('Connected Accounts');
+    router.replace('/', { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Tell screen-reader users (and the browser tab) which page they are on.
   useEffect(() => {
     const name = active === 'Overview' ? 'Agency Overview' : active;
